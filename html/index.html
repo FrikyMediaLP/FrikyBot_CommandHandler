@@ -1,0 +1,357 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Commands - FrikyBot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- GENERAL CSS -->
+    <link href="../styles/standard.css" rel="stylesheet">
+    <link href="../styles/Grid/Grid_Foundation.css" rel="stylesheet">
+
+    <!-- PAGE CSS-->
+    <link href="../styles/Grid/Grid_Default.css" rel="stylesheet">
+    <link href="Commands/styles/index.css" rel="stylesheet">
+
+    <!-- GENERAL JS-->
+    <script src="../scripts/standard.js"></script>
+
+    <!-- PAGE JS-->
+    <script src="Commands/scripts/index.js"></script>
+
+    <!-- MISC -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400&display=swap" rel="stylesheet">
+
+    <script src="../misc/NavigationV2/NavigationV2.js"></script>
+    <link href="../misc/NavigationV2/NavigationV2.css" rel="stylesheet">
+
+    <script src="../misc/OUTPUT/OUTPUT.js"></script>
+    <link href="../misc/OUTPUT/OUTPUT.css" rel="stylesheet">
+
+    <script src="../misc/BOT_STATUS/BOT_STATUS.js"></script>
+    <link href="../misc/BOT_STATUS/BOT_STATUS.css" rel="stylesheet">
+
+    <script src="../misc/Login/Login.js"></script>
+    <link href="../misc/Login/Login.css" rel="stylesheet">
+
+    <script src="../misc/SwitchButton/SwitchButton.js"></script>
+    <link href="../misc/SwitchButton/SwitchButton.css" rel="stylesheet">
+
+    <script src="../misc/IconSelection/IconSelection.js"></script>
+    <link href="../misc/IconSelection/IconSelection.css" rel="stylesheet">
+
+</head>
+<body onload="Standard_Page_Init(); init();">
+    <!-- MAIN GRID -->
+    <div id="grid">
+        <!-- NAVI HEADER -->
+        <div class="cellM" id="naviHeader">
+            <a href="./">FRIKY<span>BOT</span></a>
+        </div>
+
+        <!-- CONTENT HEADER -->
+        <div class="cellM" id="contentHeader">
+
+        </div>
+
+        <!-- NAVI -->
+        <div class="cellM" id="navi">
+            <div id="BOT_STATUS_DETAILS_MINI">
+
+            </div>
+            <div id="mainNavi">
+
+            </div>
+            <button id="LightModeButton" onclick="toggleLightMode()">DarkMode</button>
+            <div id="license"> - <a href="https://fontawesome.com/license" target="_blank">Icon license</a> - </div>
+        </div>
+
+        <!-- ACTUAL CONTENT -->
+        <div class="cellM" id="content">
+            <div id="MAIN_CONTENT_WRAPPER">
+                <output></output>
+                <br />
+
+                <div id="Hardcoded">
+                    <div id="Header" onclick="toggleShow()">
+                        <p id="Title">HARDCODED COMMANDS <span id="HCarrow">▼</span></p>
+                    </div>
+                    <div id="contentHC">
+                        <div><div style="transform: translate(100%, 0)" ;>NONE</div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                </div>
+
+                <center><h1>Custom Commands</h1></center>
+
+                <div id="COMMANDS_LIST_WRAPPER">
+                    <button id="ADD_CUSTOM" onclick="editor_Command_show();" green hidden>Add Command</button>
+                    <select onchange="Commands_perPageChange(this)">
+                        <option>5</option>
+                        <option selected>10</option>
+                        <option>15</option>
+                        <option>20</option>
+                        <option>50</option>
+                        <option>100</option>
+                        <option>ALL</option>
+                    </select>
+                    <div id="COMMANDS_LIST_CONTENT">
+
+                    </div>
+                    <div id="BOTTOM_UI">
+                        <span>See available Command <a href="Commands/Variables">Variables</a>!</span>
+                        <div class="UI_PAGES" id="CMD_UI_PAGES">
+                            <button onclick="Commands_firstPage()" disabled>first</button>
+                            <button onclick="Commands_prevPage()" disabled>prev</button>
+                            <input oninput="Commands_pageChange(this, event)" type="number" min="1" step="1" value="1" />
+                            <button onclick="Commands_nextPage()">next</button>
+                            <button onclick="Commands_lastPage()">last</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="COMMANDS_ONCOOLODWN">
+                    <h2 style="margin-left: 0; margin-bottom: 0;">Commands on Cooldown</h2>
+                    <div id="COMMANDS_ONCOOLODWN_CONTENT">
+
+                    </div>
+                </div>
+
+                <div id="TIMER_LIST_WRAPPER" hidden>
+                    <center><h1>Timers</h1></center>
+                    <button id="ADD_TIMER" onclick="editor_Timer_show();" green hidden>Add Timer</button>
+                    <select onchange="Timers_perPageChange(this)">
+                        <option>5</option>
+                        <option selected>10</option>
+                        <option>15</option>
+                        <option>20</option>
+                        <option>50</option>
+                        <option>100</option>
+                        <option>ALL</option>
+                    </select>
+                    <div id="TIMER_LIST">
+
+                    </div>
+                    <div class="UI_PAGES" id="TMR_UI_PAGES">
+                        <button onclick="Timers_firstPage()" disabled>first</button>
+                        <button onclick="Timers_prevPage()" disabled>prev</button>
+                        <input oninput="Timers_pageChange(this, event)" type="number" min="1" step="1" value="1" />
+                        <button onclick="Timers_nextPage()">next</button>
+                        <button onclick="Timers_lastPage()">last</button>
+                    </div>
+                </div>
+
+                <br />
+                <center><h4 style="margin-bottom: 0;">USERLEVEL HIERARCHY</h4></center>
+                <center id="BOTTOM_SETTINGS">
+                    <div class="HIERARCHY">
+                        <div class="Badge">
+                            <img src="https://static-cdn.jtvnw.net/badges/v1/5527c58c-fb7d-422d-b71b-f309dcb85cc1/1" title="Broadcaster">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Wrapper">
+                            <div class="Badge">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/9ef7e029-4cdf-4d4d-a0d5-e2b3fb2583fe/1" title="Admin">
+                            </div>
+                            <span>=</span>
+                            <div class="Badge">
+                                <a href="https://www.twitch.tv/jobs?ref=chat_badge" target="_blank">
+                                    <img src="https://static-cdn.jtvnw.net/badges/v1/d97c37bd-a6f5-4c38-8f57-4e4bef88af34/1" title="Staff">
+                                </a>
+                            </div>
+                            <span>=</span>
+                            <div class="Badge">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/9384c43e-4ce7-4e94-b2a1-b93656896eba/1" title="Global Moderator">
+                            </div>
+                            <span>=</span>
+                            <div class="Badge">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/3267646d-33f0-4b17-b3df-f923a41db1d0/1" title="Moderator">
+                            </div>
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <a href="https://help.twitch.tv/customer/en/portal/articles/659115-twitch-chat-badges-guide" target="_blank">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/b817aba4-fad8-49e2-b88a-7cc744dfa6ec/1" title="VIP">
+                            </a>
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="https://static-cdn.jtvnw.net/badges/v1/511b78a9-ab37-472f-9569-457753bbe7d3/1" title="Founder">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="https://static-cdn.jtvnw.net/badges/v1/5d9f2208-5dd8-11e7-8513-2ff4adfae661/1" title="Subscriber">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <a href="https://blog.twitch.tv/the-verified-badge-is-here-13381bc05735" target="_blank">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/d12a2e27-16f6-41d0-ab77-b780518f00a3/1" title="Verified">
+                            </a>
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="../images/Badges/Other.png" title="Every Other Badge">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="../images/Badges/Follow.png" title="Followers">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="../images/Badges/Regular.png" title="Regular User">
+                        </div>
+                    </div>
+                    <div>
+                        <center><span>Show Highlighted Variables:</span><switchbutton value="true" onclick="highlighted_vars(this)"></switchbutton></center>
+                        <center><span>Only show Output Text:</span><switchbutton value="false" onclick="output_only(this)"></switchbutton></center>
+                    </div>
+                </center>
+            </div>
+
+            <div id="CUSTOM_COMMAND_EDITOR" class="EDITOR">
+                <div class="EDITOR_EXIT" onclick="editor_Command_show(true)">X</div>
+                <output id="EDITOR_OUTPUT_1"></output>
+                <center class="EDITOR_HEADER">Command Editor</center>
+                <div class="Editor_Center">
+                    <p>Command Trigger</p>
+                    <input type="text" id="EDITOR_NAME" placeholder="!name" autocomplete="off" oninput="editor_name_change(this)" />
+                    <input id="EDITOR_NAME_CASE" type="checkbox" title="Case Sensitive (WiP)" style="transform: translate(0, -23px);" />
+                    <center id="Editor_Trigger_Text">Beginning Only Detection</center>
+                    <input id="EDITOR_Trigger_MODE" type="range" min="0" value="0" step="1" max="3" oninput="editor_Command_trigger_mode(this);" />
+                    <center id="Editor_Trigger_Text_Sub">Command will only trigger, when command is called at the start of a message</center>
+
+                    <p>Command Output</p>
+                    <textarea id="EDITOR_OUTPUT" oninput="editor_Command_output_change(this, event)"></textarea>
+                    <span id="EDITOR_OUT_VARS"></span>
+                    <br /><span>See available Command <a href="Commands/Variables" target="_blank">Variables</a></span>
+
+                    <p>Command Description (optional)</p>
+                    <textarea id="EDITOR_DESC"></textarea>
+
+                    <center style="margin-top: 20px;" class="editor_chatpter">Userlevel</center>
+                    <div id="EDITOR_UL"></div>
+                    <input id="EDITOR_BADGEMODE" type="checkbox" title="allow all Badges" onchange="editor_Command_badgemode(this)" />
+                    <center id="Editor_UL_Text" style="margin-top: 30px;">#ModsMasterrace</center>
+                    <input id="EDITOR_UL_MODE" type="range" min="0" value="0" step="1" max="3" oninput="editor_Command_ul_mode(this);" />
+                    <center id="Editor_UL_Text_Sub">"Higher" Badges can use this Command too</center>
+
+                    <center style="margin-top: 30px;" class="editor_chatpter">Cooldown</center>
+                    <input id="EDITOR_CD" type="range" min="0" value="1" step="1" max="39" oninput="editor_Command_cooldown_change(this);" />
+                    <input id="Editor_CD_Text" type="text" value="1m" oninput="editor_Command_interval_reverse(this.value)"/>
+
+                    <center class="editor_chatpter">Alias</center>
+                    <input type="text" id="EDITOR_ALIAS" autocomplete="off" />
+
+                    <div id="EDITOR_COUNT_WRAPPER">
+                        <center style="margin-top: 30px;" class="editor_chatpter">Count Value <button onclick="editor_Command_counterremove()">clear</button></center>
+                        <input id="EDITOR_COUNT" type="range" min="0" value="1" step="1" onchange="this.title = this.value"/>
+                    </div>
+
+                    <center style="margin-top: 20px;" class="editor_chatpter">Enabled</center>
+                    <center><switchbutton value="true" id="EDITOR_ENABLE"></switchbutton></center>
+                </div>
+
+                <button class="Editor_SAVE" green onclick="editor_Command_save()">SAVE</button>
+
+                <center style="position: absolute; left: 0px; bottom: -36px;">
+                    <div class="HIERARCHY SMALL">
+                        <div class="Badge">
+                            <img src="https://static-cdn.jtvnw.net/badges/v1/5527c58c-fb7d-422d-b71b-f309dcb85cc1/1" title="Broadcaster">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Wrapper">
+                            <div class="Badge">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/9ef7e029-4cdf-4d4d-a0d5-e2b3fb2583fe/1" title="Admin">
+                            </div>
+                            <span>=</span>
+                            <div class="Badge">
+                                <a href="https://www.twitch.tv/jobs?ref=chat_badge" target="_blank">
+                                    <img src="https://static-cdn.jtvnw.net/badges/v1/d97c37bd-a6f5-4c38-8f57-4e4bef88af34/1" title="Staff">
+                                </a>
+                            </div>
+                            <span>=</span>
+                            <div class="Badge">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/9384c43e-4ce7-4e94-b2a1-b93656896eba/1" title="Global Moderator">
+                            </div>
+                            <span>=</span>
+                            <div class="Badge">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/3267646d-33f0-4b17-b3df-f923a41db1d0/1" title="Moderator">
+                            </div>
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <a href="https://help.twitch.tv/customer/en/portal/articles/659115-twitch-chat-badges-guide" target="_blank">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/b817aba4-fad8-49e2-b88a-7cc744dfa6ec/1" title="VIP">
+                            </a>
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="https://static-cdn.jtvnw.net/badges/v1/511b78a9-ab37-472f-9569-457753bbe7d3/1" title="Founder">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="https://static-cdn.jtvnw.net/badges/v1/5d9f2208-5dd8-11e7-8513-2ff4adfae661/1" title="Subscriber">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <a href="https://blog.twitch.tv/the-verified-badge-is-here-13381bc05735" target="_blank">
+                                <img src="https://static-cdn.jtvnw.net/badges/v1/d12a2e27-16f6-41d0-ab77-b780518f00a3/1" title="Verified">
+                            </a>
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="../images/Badges/Other.png" title="Every Other Badge">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="../images/Badges/Follow.png" title="Followers">
+                        </div>
+                        <span>&gt;</span>
+                        <div class="Badge">
+                            <img src="../images/Badges/Regular.png" title="Regular User">
+                        </div>
+                    </div>
+                </center>
+            </div>
+
+            <div id="TIMER_EDITOR" class="EDITOR">
+                <div class="EDITOR_EXIT" onclick="editor_Timer_show(true)">X</div>
+                <output id="EDITOR_OUTPUT_2"></output>
+                <center class="EDITOR_HEADER">Timer Editor</center>
+
+                <div class="Editor_Center">
+                    <p>Timer name</p>
+                    <input type="text" id="EDITOR_TIMER_NAME" placeholder="timer" autocomplete="off" oninput="editor_name_change(this)" />
+
+                    <p>Timer Output</p>
+                    <textarea id="EDITOR_TIMER_OUTPUT" oninput="editor_Timer_output_change(this, event)"></textarea>
+                    <span id="EDITOR_TIMER_OUT_VARS"></span>
+                    <br /><span>See available Command <a href="Commands/Variables" target="_blank">Variables</a></span>
+
+                    <p>Command Description (optional)</p>
+                    <textarea id="EDITOR_TIMER_DESC"></textarea>
+
+                    <center style="margin-top: 30px;" class="editor_chatpter">Interval</center>
+                    <input id="EDITOR_TIMER_INTERVAL" type="range" min="1" value="1" step="1" max="32" oninput="editor_Timer_interval_change(this);" />
+                    <input id="Editor_TIMER_INTERVAL_Text" type="text" value="5m" oninput="editor_Timer_interval_reverse(this.value)" />
+
+                    <center style="margin-top: 30px;" class="editor_chatpter">Seperation Lines</center>
+                    <input id="EDITOR_TIMER_LINES" type="range" min="0" value="10" step="1" oninput="editor_Timer_lines_change(this.value);" />
+                    <input id="Editor_TIMER_LINES_Text" type="text" value="10" oninput="editor_Timer_lines_change(this.value)" />
+
+                    <p>Alias</p>
+                    <input type="text" id="EDITOR_TIMER_ALIAS" autocomplete="off" oninput="editor_Timer_alias(this)" />
+                    <center id="EDITOR_TIMER_ALIAS_INFO"></center>
+
+                    <center style="margin-top: 20px;" class="editor_chatpter">Enabled</center>
+                    <center><switchbutton value="true" id="EDITOR_TIMER_ENABLE"></switchbutton></center>
+                </div>
+
+                <button class="Editor_SAVE" green onclick="editor_Timer_save()">SAVE</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

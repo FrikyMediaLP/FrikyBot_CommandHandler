@@ -1,0 +1,90 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Command Variables - FrikyBot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- GENERAL CSS -->
+    <link href="../styles/standard.css" rel="stylesheet">
+    <link href="../styles/Grid/Grid_Foundation.css" rel="stylesheet">
+
+    <!-- PAGE CSS-->
+    <link href="../styles/Grid/Grid_Default.css" rel="stylesheet">
+    <link href="styles/variables.css" rel="stylesheet">
+
+    <!-- GENERAL JS-->
+    <script src="../scripts/standard.js"></script>
+
+    <!-- PAGE JS-->
+    <script src="scripts/variables.js"></script>
+
+    <!-- MISC -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400&display=swap" rel="stylesheet">
+
+    <script src="../misc/NavigationV2/NavigationV2.js"></script>
+    <link href="../misc/NavigationV2/NavigationV2.css" rel="stylesheet">
+
+    <script src="../misc/OUTPUT/OUTPUT.js"></script>
+    <link href="../misc/OUTPUT/OUTPUT.css" rel="stylesheet">
+
+    <script src="../misc/BOT_STATUS/BOT_STATUS.js"></script>
+    <link href="../misc/BOT_STATUS/BOT_STATUS.css" rel="stylesheet">
+
+    <script src="../misc/Login/Login.js"></script>
+    <link href="../misc/Login/Login.css" rel="stylesheet">
+
+    <script src="../misc/SwitchButton/SwitchButton.js"></script>
+    <link href="../misc/SwitchButton/SwitchButton.css" rel="stylesheet">
+</head>
+<body onload="Standard_Page_Init(); init();">
+    <div id="grid">
+        <div class="cellM" id="naviHeader">
+            <a href="../">FRIKY<span>BOT</span></a>
+        </div>
+
+        <div class="cellM" id="contentHeader">
+
+        </div>
+        <!-- NAVI -->
+        <div class="cellM" id="navi">
+            <div id="BOT_STATUS_DETAILS_MINI">
+
+            </div>
+            <div id="mainNavi">
+
+            </div>
+            <button id="LightModeButton" onclick="toggleLightMode()">DarkMode</button>
+            <div id="license"> - <a href="https://fontawesome.com/license" target="_blank">Icon license</a> - </div>
+        </div>
+
+        <div class="cellM" id="content">
+            <output></output>
+            <h1>Bot Command Variables</h1>
+            <div id="VARIABLE_LIST">
+
+            </div>
+            <p>* Enhanced or Reduced Features</p>
+
+            <div id="CUSTOM_VARIABLE_CONTENT_WRAPPER">
+                <center id="CV_Header">Custom Command Variables</center>
+                <output id="OUTPUT_2"></output>
+                <center id="CUSTOM_VARIABLE_CONTENT_UI">
+                    <input id="CUSTOM_PATH" oninput="CV_input(this)" placeholder="enter path" />
+                    <button id="CUSTOM_SAVE" onclick="saveCustom()" disabled>SAVE</button>
+                    <button id="CUSTOM_REMOVE" onclick="removeCustom()" disabled>REMOVE</button>
+                    <button id="CUSTOM_CANCEL" onclick="cancelCustom()" disabled>CANCEL</button>
+                    <center id="CUSTOM_DATA">
+
+                    </center>
+                </center>
+                <center id="CV_Header">Custom Command Variables Database</center>
+                <div id="CUSTOM_VARIABLE_CONTENT">
+
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

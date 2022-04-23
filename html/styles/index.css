@@ -1,0 +1,521 @@
+body{
+    position: relative;
+}
+
+#grid{
+    position: absolute;
+    top: 0;
+}
+
+#grid #content {
+    position: relative !important;
+    background-color: #f0f0f0 !important;
+}
+.darkmode #grid #content {
+    background-color: #292929 !important;
+    color: white;
+}
+
+    #grid #content h1 {
+        padding: 10px 0 !important;
+        margin: 10px 0;
+        background-color: white !important;
+    }
+
+.darkmode #grid #content h1 {
+    background-color: #4f4f4f !important;
+    color: white;
+}
+
+
+#grid #content h2{
+    margin-left: 5px;
+}
+
+
+#grid #content a {
+    color: #19a3ff;
+}
+
+#MAIN_CONTENT_WRAPPER.blur {
+    filter: blur(5px);
+    pointer-events: none;
+    /* DISABLE SELECT */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+/*-----------------------------
+          Hardcoded
+-----------------------------*/
+#Hardcoded {
+    background-color: #e8e8e8;
+    border: 1px solid #d1d1d1;
+}
+.darkmode #Hardcoded {
+    background-color: #616161;
+}
+    #Hardcoded p {
+        margin: 5px;
+    }
+
+    #Hardcoded #Title{
+        padding: 10px;
+        font-size: 25px;
+        font-weight: bold;
+        position: relative;
+        cursor: pointer;
+    }
+
+        #Hardcoded #Title #HCarrow {
+            position: absolute;
+            right: 0;
+        }
+
+#Hardcoded #contentHC {
+    height: 100%;
+    border-top: 1px solid black;
+    display: none;
+    grid-template-columns: auto auto 73px;
+    grid-template-rows: auto;
+    color: #545454;
+}
+.darkmode #Hardcoded #contentHC {
+    color: white;
+}
+        #Hardcoded #contentHC .HardcodedName {
+            font-weight: bold;
+        }
+
+        #Hardcoded #contentHC > div {
+            padding: 10px;
+            border-top: 1px solid #d1d1d1;
+        }
+            #Hardcoded #contentHC > div:nth-child(1), #Hardcoded #contentHC > div:nth-child(2), #Hardcoded #contentHC > div:nth-child(3) {
+                border-top: none;
+            }
+
+            #Hardcoded #contentHC > div:nth-child(3n+3) {
+                border-right: 1px solid #d1d1d1;
+            }
+
+            #Hardcoded #contentHC > div:nth-child(6n+1), #Hardcoded #contentHC > div:nth-child(6n+2), #Hardcoded #contentHC > div:nth-child(6n+3) {
+                background-color: white;
+            }
+
+            #Hardcoded #contentHC > div:nth-child(6n+4), #Hardcoded #contentHC > div:nth-child(6n+5), #Hardcoded #contentHC > div:nth-child(6n+6) {
+                background-color: #e8e8e8;
+            }
+
+.darkmode #Hardcoded #contentHC > div:nth-child(6n+1), .darkmode #Hardcoded #contentHC > div:nth-child(6n+2), .darkmode #Hardcoded #contentHC > div:nth-child(6n+3) {
+    background-color: #383838;
+}
+
+.darkmode #Hardcoded #contentHC > div:nth-child(6n+4), .darkmode #Hardcoded #contentHC > div:nth-child(6n+5), .darkmode #Hardcoded #contentHC > div:nth-child(6n+6) {
+    background-color: #262626;
+}
+
+        #Hardcoded #contentHC .HarcodedDetails span {
+            padding: 3px 6px;
+            background-color: rgba(253, 255, 117, 0.8);
+        }
+
+        #Hardcoded #contentHC .HarcodedDetails ul {
+            margin-top: 0;
+        }
+
+/*-----------------------------
+        Custom Commands
+-----------------------------*/
+
+#COMMANDS_LIST_WRAPPER {
+    margin-top: 20px;
+    position: relative;
+}
+
+    #COMMANDS_LIST_WRAPPER > select {
+        position: absolute;
+        top: -20px;
+    }
+
+#COMMANDS_LIST_CONTENT {
+    margin-top: 35px;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+}
+
+    customtable button {
+        margin-right: 5px;
+    }
+
+    button:not([disabled]):hover {
+        filter: brightness(0.9);
+    }
+
+button[red] {
+    background-color: #ff8282;
+}
+.darkmode button[red] {
+    background-color: #c71818;
+    color: white;
+}
+
+    button[green] {
+        background-color: #82ff84;
+    }
+.darkmode button[green] {
+    background-color: #18c73e;
+    color: white;
+}
+
+    button[yellow] {
+        background-color: #ffdd80;
+    }
+.darkmode button[yellow] {
+    background-color: yellow;
+    color: black;
+}
+
+#ADD_CUSTOM {
+    position: absolute;
+    right: 0px;
+    top: -30px;
+    margin-bottom: 5px;
+    height: 25px;
+}
+
+#COMMANDS_LIST_WRAPPER #BOTTOM_UI {
+    display: grid;
+    grid-template-columns: auto 200px;
+    grid-column-gap: 40px;
+}
+
+    #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES input {
+        width: 20px;
+        text-align: center;
+        border: none;
+        border-bottom: 1px solid gray;
+        background: none;
+        padding-right: 5px;
+    }
+
+    .darkmode #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES input {
+        color: white;
+    }
+
+    #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES input::-webkit-outer-spin-button,
+    #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES button {
+        background-color: lightgray;
+    }
+    .darkmode #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES button {
+        background-color: white !important;
+    }
+    #COMMANDS_LIST_WRAPPER #BOTTOM_UI .UI_PAGES button[disabled] {
+        background: none !important;
+        cursor: default;
+    }
+
+#UI_LINK {
+    display: grid;
+    grid-template-columns: auto auto auto;
+}
+#UI_LINK :last-child{
+    text-align: right;
+}
+#UI_LINK switchbutton {
+    transform: translate(0, 5px);
+}
+
+/*-----------------------------
+            EDITOR
+-----------------------------*/
+
+.EDITOR {
+    position: absolute;
+    top: 25px;
+    left: 50%;
+    transform: translate(-50%, 0);
+    width: 400px;
+    background-color: white;
+    z-index: -1;
+    display: block;
+    padding: 5px;
+    padding-bottom: 50px;
+}
+.darkmode .EDITOR {
+    background-color: #3d3d3d;
+}
+    .EDITOR.show {
+        z-index: 1;
+    }
+
+.EDITOR > output{
+    margin-top: 5px;
+}
+
+.EDITOR_EXIT{
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    color: gray;
+    font-size: 30px;
+    cursor: pointer;
+}
+
+.EDITOR_HEADER {
+    font-size: 30px;
+    font-weight: bold;
+    margin-top: 10px;
+    border-bottom: 1px solid lightgray;
+}
+
+.Editor_Center {
+    transform: translate(12%, 0);
+    width: calc(100% - 100px);
+    padding: 10px;
+}
+.editor_chatpter{
+    border-bottom: 1px solid gray;
+    margin-bottom: 5px;
+}
+
+.Editor_SAVE {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translate(-50%, 0);
+    padding: 5px 20px;
+}
+
+.EDITOR p {
+    margin-bottom: 0;
+    position: relative;
+}
+.EDITOR input:not([type="checkbox"]), .EDITOR textarea {
+    width: calc(100% - 10px);
+    min-width: calc(100% - 10px);
+    resize: both;
+    outline: none;
+}
+.EDITOR #EDITOR_TIMER_DESC, .EDITOR #EDITOR_DESC {
+    resize: both;
+    min-height: 30px;
+}
+
+.EDITOR input[type="checkbox"] {
+    height: 20px;
+    width: 20px;
+    cursor: pointer;
+    position: absolute;
+    right: 10px;
+}
+.EDITOR input.notfound {
+    color: red;
+}
+
+/* COMMAND */
+#EDITOR_OUT_VARS {
+    font-size: 10px;
+    display: none;
+    transform: translate(0, -3px);
+}
+#EDITOR_UL {
+    position: absolute;
+    left: 50%;
+    transform: translate(-50%, 0);
+}
+#Editor_UL_Dashes {
+    transform: translate(9px, 6px);
+    width: calc(100% - 16px);
+    color: gray;
+    height: 6px;
+    overflow: hidden;
+    /* DISABLE SELECT */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+    #Editor_UL_Dashes span {
+        margin-right: 32%;
+        border-left: 1px solid gray;
+    }
+
+#Editor_UL_Text, #Editor_Trigger_Text {
+    margin-top: 10px;
+}
+#Editor_UL_Text_Sub, #Editor_Trigger_Text_Sub {
+    color: gray;
+    font-size: 10px;
+}
+
+#EDITOR_COUNT_WRAPPER{
+    display: none;
+}
+
+#Editor_TIMER_INTERVAL_Text, #Editor_CD_Text, #Editor_TIMER_LINES_Text {
+    background: none;
+    border: none;
+    text-align: center;
+}
+
+.darkmode #Editor_TIMER_INTERVAL_Text, .darkmode #Editor_CD_Text, .darkmode #Editor_TIMER_LINES_Text {
+    color: white;
+}
+
+/*-----------------------------
+        Timers
+-----------------------------*/
+#TIMER_LIST_WRAPPER {
+    margin-top: 20px;
+    position: relative;
+}
+#TIMER_LIST {
+    margin-top: 35px;
+}
+
+
+    #TIMER_LIST_WRAPPER > select {
+        position: absolute;
+        top: 80px;
+    }
+    #TIMER_LIST span[notfound]{
+        color: red;
+        cursor: help;
+    }
+
+#ADD_TIMER {
+    float: right;
+    margin-bottom: 5px;
+    height: 25px;
+}
+
+#TIMER_LIST_WRAPPER .UI_PAGES {
+    float: right;
+    margin-right: 10px;
+}
+
+    #TIMER_LIST_WRAPPER .UI_PAGES input {
+        width: 20px;
+        text-align: center;
+        border: none;
+        border-bottom: 1px solid gray;
+        background: none;
+        padding-right: 5px;
+    }
+    .darkmode #TIMER_LIST_WRAPPER .UI_PAGES input {
+        color: white;
+    }
+
+        #TIMER_LIST_WRAPPER .UI_PAGES input::-webkit-outer-spin-button,
+        #TIMER_LIST_WRAPPER .UI_PAGES input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+#TIMER_LIST_WRAPPER .UI_PAGES button {
+    background-color: lightgray;
+}
+
+.darkmode #TIMER_LIST_WRAPPER .UI_PAGES button {
+    background-color: white !important;
+    color: black;
+}
+
+        #TIMER_LIST_WRAPPER .UI_PAGES button[disabled] {
+            background: none !important;
+            cursor: default;
+        }
+
+#EDITOR_TIMER_ALIAS_INFO {
+    font-weight: 200;
+    color: red;
+    font-size: 15px;
+}
+
+/*-----------------------------
+         HIERARCHY
+-----------------------------*/
+#BOTTOM_SETTINGS {
+    margin-bottom: 35px;
+}
+
+.HIERARCHY {
+    margin: 0 auto;
+    width: 500px;
+    padding: 5px;
+    background-color: lightgray;
+    display: grid;
+    grid-template-rows: auto;
+    grid-template-columns: repeat(17, auto);
+}
+.darkmode .HIERARCHY {
+    background-color: gray;
+    color: black;
+}
+    .HIERARCHY.SMALL {
+        width: 400px;
+    }
+    .HIERARCHY .Badge {
+        padding-top: 4px;
+    }
+
+    .HIERARCHY span {
+        padding-top: 4px;
+    }
+
+.HIERARCHY .Badge:hover {
+    background-color: gray;
+}
+.darkmode .HIERARCHY .Badge:hover {
+    background-color: dimgray;
+}
+
+        .HIERARCHY .Badge a {
+            text-decoration: none;
+        }
+
+
+    .HIERARCHY .Wrapper {
+        padding-left: 4px;
+        padding-right: 4px;
+        display: grid;
+        grid-template-rows: auto;
+        grid-template-columns: repeat(7, auto);
+        grid-column-gap: 5px;
+    }
+
+        .HIERARCHY .Wrapper:hover {
+            background-color: gray;
+        }
+        .darkmode .HIERARCHY .Wrapper:hover {
+            background-color: dimgray;
+        }
+
+
+#BOTTOM_SETTINGS > div:last-child {
+    margin-top: 10px;
+    width: 75%;
+    display: grid;
+    grid-template-columns: 50% 50%;
+}
+    #BOTTOM_SETTINGS > div:last-child > center {
+        display: grid;
+        grid-column-gap: 10px;
+        grid-template-columns: auto 52px;
+        text-align: right;
+    }
+    #BOTTOM_SETTINGS > div:last-child > center > span{
+        padding-top: 1px;
+    }
