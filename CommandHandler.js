@@ -1,5 +1,6 @@
 ﻿const CONSTANTS = require('./../../Util/CONSTANTS.js');
 const TWITCHIRC = require('./../../Modules/TwitchIRC.js');
+const FrikyDB = require('./../../Util/FrikyDB.js');
 
 const express = require('express');
 const path = require('path');
@@ -18,7 +19,9 @@ const COMMAND_TEMPLATE = {
     name: "string",
     counter: "number",
     alias: "string",
-    added_by: "string"
+    regex: "string",
+    added_by: "string",
+    viewing_restriction: "boolean"
 };
 const COMMAND_TEMPLATE_REQUIRED = {
     output: "string",
@@ -32,7 +35,10 @@ const TIMER_TEMPLATE = {
     enabled: "boolean",
     name: "string",
     alias: "string",
-    added_by: "string"
+    added_by: "string",
+    auto_enable: "string",
+    game: "string",
+    viewing_restriction: "boolean"
 };
 const TIMER_TEMPLATE_REQUIRED = {
     interval: "string",
@@ -43,7 +49,19 @@ const TIMER_TEMPLATE_REQUIRED = {
 const PACKAGE_DETAILS = {
     name: "CommandHandler",
     description: "Typical Command Handler as you know it!",
-    picture: "/images/icons/command.svg"
+    picture: "/images/icons/command.svg",
+    api_requierements: {
+        eventsubs: ['channel.update', 'stream.online', 'stream.offline', 'channel.poll.begin', 'channel.poll.progress', 'channel.poll.end', 'channel.prediction.update', 'channel.prediction.progress', 'channel.prediction.end'],
+        endpoints: ['GetStreams', 'GetChannelInformation', 'ModifyChannelInformation', 'SearchCategories', 'CreateClip', 'GetClips', 'CreatePoll', 'EndPoll', 'CreatePrediction', 'EndPrediction', 'GetUsers', 'GetStreamTags', 'GetBroadcasterSubscriptions', 'GetUsersFollows', 'GetChannelEmotes']
+    },
+    version: '0.4.0.0',
+    server: '0.4.0.0',
+    modules: {
+        twitchapi: '0.4.0.0',
+        twitchirc: '0.4.0.0',
+        webapp: '0.4.0.0'
+    },
+    packages: []
 };
 
 class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase {
@@ -57,6 +75,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         this.Config.AddSettingTemplates([
             { name: 'data_dir', type: 'string', default: CONSTANTS.FILESTRUCTURE.PACKAGES_INSTALL_ROOT + "CommandHandler/data/" },
             { name: 'disabled_hccommands', type: 'array', title: 'All disabled HC Cmds', default: [] },
+            { name: 'renamed_hccommands', type: 'array', title: 'All renamed HC Cmds', default: [] },
             { name: 'command_timer_reset', type: 'boolean', default: true },
             { name: '!clip_userlevel', type: 'string', default: 'regular' },
             { name: '!clip_delay', type: 'boolean', default: false },
@@ -67,18 +86,56 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             { name: 'poll_choice_3', type: 'string', default: 'C' },
             { name: 'poll_choice_4', type: 'string', default: 'D' },
             { name: 'poll_choice_5', type: 'string', default: 'E' },
-            { name: 'pred_title', type: 'string', default: 'Can I win this Challenge!' },
+            { name: 'pred_title', type: 'string', default: 'Can I beat this Challenge!' },
             { name: 'pred_duration', type: 'number', default: 60 },
             { name: 'pred_outcome_blue', type: 'string', default: 'YES' },
-            { name: 'pred_outcome_pink', type: 'string', default: 'NO' }
+            { name: 'pred_outcome_pink', type: 'string', default: 'NO' },
+            { name: 'website_userlevel', type: 'string', default: 'viewer', selection: ['viewer', 'moderator', 'staff', 'admin'], title: 'Website Userlevel Restriction', description: 'Restrict Access to the CommandHandler Website for Users below the given Userlevel.' }
         ]);
         this.Config.Load();
         this.Config.FillConfig();
+
+        //STATS
+        this.STAT_NUB_COMMANDS = 0;
+        this.STAT_NUB_COMMANDS_PER_10 = 0;
+
+        this.STAT_AVG_TIME = 0;
+        this.STAT_AVG_TIME_PER_10 = 0;
+        
+        this.STAT_MINUTE_TIMER = setInterval(() => {
+            this.STAT_NUB_COMMANDS_PER_10 = 0;
+            this.STAT_AVG_TIME_PER_10 = 0;
+        }, 600000);
+        
+        //Displayables
+        this.addDisplayables([
+            { name: 'Total Number of Commands', value: () => this.STAT_NUB_COMMANDS },
+            { name: 'Number of Commands Per 10 Min', value: () => this.STAT_NUB_COMMANDS_PER_10 },
+            { name: 'Average Time to Analyse Messages', value: () => this.STAT_AVG_TIME + 'ms' },
+            { name: 'avg. Time to Analyse Messages Per 10 Min', value: () => this.STAT_AVG_TIME_PER_10 + 'ms' }
+        ]);
+
+        //Controllables
+        this.addControllables([
+            { name: 'poll_stream', title: 'Poll Stream Data', callback: async (user) => this.Controllable_PollStream() }
+        ]);
     }
 
     async Init(startparameters) {
         if (!this.isEnabled()) return Promise.resolve();
         let cfg = this.Config.GetConfig();
+
+        //Setup File Structure
+        const files = [cfg['data_dir']];
+        for (let file of files) {
+            try {
+                if (!fs.existsSync(path.resolve(file))) {
+                    fs.mkdirSync(path.resolve(file));
+                }
+            } catch (err) {
+                this.Logger.error(err.message);
+            }
+        }
         
         this.CommandVariables = {};
         this.CustomVariables = {};
@@ -87,17 +144,18 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         this.HardcodedCommands = {};
         this.Timers = [];
         this.ActiveTimers = [];
-        this.CURRENT_POLL_ID = null;
-        this.CURRENT_PRED_DATA = null;
+
+        this.WatchTimeDB = new FrikyDB.Collection({ path: path.resolve(cfg['data_dir'] + 'watchtime.db') });
+        this.WatchTime_Interval = null;
         
         this.setWebNavigation({
             name: "Commands",
             href: this.getHTMLROOT(),
             icon: "images/icons/command.svg"
-        }, "Main");
+        }, "Main", () => this.Config.GetConfig()['website_userlevel']);
         
         this.HardcodedCommands = {
-            "!bot": new HCCommand("!title", async (userMessageObj, parameters) => {
+            "!bot": new HCCommand("!bot", async (userMessageObj, parameters) => {
                 let api_status = 'OFFLINE';
                 if (this.TwitchAPI.AppAccessToken) api_status = 'PARTIAL';
                 if (this.TwitchAPI.UserAccessToken) api_status = 'ONLINE';
@@ -121,7 +179,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                             let games = (await this.TwitchAPI.SearchCategories({ query: parameters.slice(1).join(" "), first: 1 })).data;
 
                             if (games.length === 0) {
-                                this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> No Game found by that name! ").catch(this.Logger.error(err.message));
+                                this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> No Game found by that name! ").catch(err => this.Logger.error(err.message));
                                 return Promise.reject(new Error('Game not found!'));
                             }
                             
@@ -140,12 +198,13 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                         else return Promise.resolve();
                     }
                 } catch (err) {
-                    this.TwitchIRC.say("Somthing went wrong, maybe the Bot-User hasnt Access to change games?").catch(this.Logger.error(err.message));;
+                    this.TwitchIRC.say("Somthing went wrong, maybe the Bot-User hasnt Access to change games?").catch(err => this.Logger.error(err.message));;
                     return Promise.reject(err);
                 }
             },
                 {
-                    description: 'Prints the current Game to the User. Mods can @ a User like this: "!game @USERNAME", or set the Game like this: "!game GAMENAME" (use !game UNSET or !game 0 to unset the game), the Bot wont @ Mods when they just call "!game".'
+                    description: 'Prints the current Game to the User. Mods can @ a User like this: "!game @USERNAME", or set the Game like this: "!game GAMENAME" (use !game UNSET or !game 0 to unset the game), the Bot wont @ Mods when they just call "!game".',
+                    api_requierements: [{ scope: 'channel:manage:broadcast' } ]
                 }),
             "!title": new HCCommand("!title", async (userMessageObj, parameters) => {
                 try {
@@ -165,12 +224,13 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                         else return Promise.resolve();
                     }
                 } catch (err) {
-                    this.TwitchIRC.say("Somthing went wrong, maybe the Bot-User hasnt Access to change games?").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say("Somthing went wrong, maybe the Bot-User hasnt Access to change games?").catch(err => this.Logger.error(err.message));
                     return Promise.reject(err);
                 }
             },
                 {
-                    description: 'Prints the current Title to the User. Mods can @ a User like this: "!title @USERNAME", or set the Title like this: "!title TITLE TEXT HERE", the Bot wont @ Mods when they just call "!title".'
+                    description: 'Prints the current Title to the User. Mods can @ a User like this: "!title @USERNAME", or set the Title like this: "!title TITLE TEXT HERE", the Bot wont @ Mods when they just call "!title".',
+                    api_requierements: [{ scope: 'channel:manage:broadcast' }]
                 }),
             "!clip": new HCCommand("!clip", async (userMessageObj, parameters) => {
                 let cfg = this.GetConfig();
@@ -208,260 +268,341 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 }
             },
                 {
-                    description: '<p>Creates a Clip of the past 30 Seconds. This can take a minute or two!</p><p>Delay and min. Userlevel can be changed in the Package Settings!</p>'
+                    description: '<p>Creates a Clip of the past 30 Seconds. This can take a minute or two!</p><p>Delay and min. Userlevel can be changed in the Package Settings!</p>',
+                    api_requierements: [{ scope: 'clips:edit' }]
                 }),
             "!startpoll": new HCCommand("!startpoll", async (userMessageObj, parameters) => {
+                if (!userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
                 let cfg = this.GetConfig();
-                if (this.CURRENT_POLL_ID !== null) {
-                    this.TwitchIRC.say("Another Poll is still running!").catch(this.Logger.error(err.message));
-                    return Promise.resolve();
+
+                //Fetch Poll
+                try {
+                    let polls = this.TwitchAPI.GetPolls({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+
+                    //Is running?
+                    if (polls.length > 0 && polls[0].status === 'ACTIVE') {
+                        this.TwitchIRC.say("Another Poll is still running!").catch(err => this.Logger.error(err.message));
+                        return Promise.resolve();
+                    }
+                } catch (err) {
+                    return Promise.reject(err);
                 }
-                
-                if (userMessageObj.matchUserlevel('moderator')) {
-                    //Create Poll data
-                    let poll_request = {
-                        broadcaster_id: userMessageObj.getRoomID(),
-                        title: cfg['poll_title'],
-                        choices: [],
-                        duration: cfg['poll_duration']
-                    };
-                    
-                    if (parameters.length > 1) {
-                        //Extract "" from Parameters
-                        let better_params = [];
 
-                        for (let i = 0; i < parameters.length; i++) {
-                            if (parameters[i].startsWith('"')) {
-                                let new_param = [];
-                                let j = i;
-                                for (j; j < parameters.length; j++) {
-                                    new_param.push(parameters[j]);
-                                    if (parameters[j].endsWith('"')) break;
-                                }
-                                better_params.push(new_param.join(" "));
-                                i = j;
+                //Create Poll
+                let poll_request = {
+                    broadcaster_id: userMessageObj.getRoomID(),
+                    title: cfg['poll_title'],
+                    choices: [],
+                    duration: cfg['poll_duration']
+                };
+
+                if (parameters.length > 1) {
+                    //Extract "" from Parameters
+                    let better_params = [];
+
+                    for (let i = 0; i < parameters.length; i++) {
+                        if (parameters[i].startsWith('"')) {
+                            let new_param = [];
+                            let j = i;
+                            for (j; j < parameters.length; j++) {
+                                new_param.push(parameters[j]);
+                                if (parameters[j].endsWith('"')) break;
                             }
-                            else better_params.push(parameters[i]);
+                            better_params.push(new_param.join(" "));
+                            i = j;
                         }
+                        else better_params.push(parameters[i]);
+                    }
 
-                        //Apply Parameters
-                        for (let i = 0; i < better_params.length; i++) {
-                            let param = better_params[i];
+                    //Apply Parameters
+                    for (let i = 0; i < better_params.length; i++) {
+                        let param = better_params[i];
 
-                            //Option?
-                            if (param.startsWith('-')) {
-                                let option = param.substring(1, param.indexOf('='));
-                                let value = param.substring(param.indexOf('=') + 1);
+                        //Option?
+                        if (param.startsWith('-')) {
+                            let option = param.substring(1, param.indexOf('='));
+                            let value = param.substring(param.indexOf('=') + 1);
 
-                                try {
-                                    if (option === 'd') poll_request.duration = parseInt(value);
-                                    else if (option === 'bv') poll_request.bits_voting_enabled = value === 'true';
-                                    else if (option === 'bmin') poll_request.bits_per_vote = parseInt(value);
-                                    else if (option === 'cpv') poll_request.channel_points_voting_enabled = value === 'true';
-                                    else if (option === 'cpmin') poll_request.channel_points_per_vote = parseInt(value);
-                                } catch (err) {
-                                    this.TwitchIRC.say("Poll couldnt be created! Error: '" + option + "'").catch(this.Logger.error(err.message));
-                                    return Promise.reject(err);
-                                }
-                            } else if (param.startsWith('"')) {
-                                if (i === 1) poll_request.title = param.split('"')[1];
-                                else if (i > 1 && i < 7) poll_request.choices.push({ title: param.split('"')[1] });
+                            try {
+                                if (option === 'd') poll_request.duration = parseInt(value);
+                                else if (option === 'bv') poll_request.bits_voting_enabled = value === 'true';
+                                else if (option === 'bmin') poll_request.bits_per_vote = parseInt(value);
+                                else if (option === 'cpv') poll_request.channel_points_voting_enabled = value === 'true';
+                                else if (option === 'cpmin') poll_request.channel_points_per_vote = parseInt(value);
+                            } catch (err) {
+                                this.TwitchIRC.say("Poll couldnt be created! Error: '" + option + "'").catch(err => this.Logger.error(err.message));
+                                return Promise.reject(err);
                             }
+                        } else if (param.startsWith('"')) {
+                            if (i === 1) poll_request.title = param.split('"')[1];
+                            else if (i > 1 && i < 7) poll_request.choices.push({ title: param.split('"')[1] });
                         }
-                    } 
-                    
-                    //Add Default Choices
-                    if (poll_request.choices.length === 0) {
-                        for (let i = 1; i <= 5; i++)
-                            if (cfg['poll_choice_' + i] !== '' && cfg['poll_choice_' + i] !== undefined)
-                                poll_request['choices'].push({ title: cfg['poll_choice_' + i] });
                     }
-                    
-                    //Create Poll
-                    try {
-                        let poll = await this.TwitchAPI.CreatePoll({}, poll_request);
-                        if (poll.data.length > 0) {
-                            this.CURRENT_POLL_ID = poll.data[0].id;
-                            return Promise.resolve();
-                        }
-                        
-                        this.TwitchIRC.say("Poll couldnt be created!").catch(this.Logger.error(err.message));
-                        return Promise.reject(new Error('Poll couldnt be created!'));
-                    } catch (err) {
-                        this.TwitchIRC.say("Poll couldnt be created!").catch(this.Logger.error(err.message));
-                        return Promise.reject(err);
-                    }
+                }
+
+                //Add Default Choices
+                if (poll_request.choices.length === 0) {
+                    for (let i = 1; i <= 5; i++)
+                        if (cfg['poll_choice_' + i] !== '' && cfg['poll_choice_' + i] !== undefined)
+                            poll_request['choices'].push({ title: cfg['poll_choice_' + i] });
+                }
+
+                //Create Poll
+                try {
+                    let poll = await this.TwitchAPI.CreatePoll({}, poll_request);
+                    this.TwitchIRC.say("Poll couldnt be created!").catch(err => this.Logger.error(err.message));
+                    return Promise.reject(new Error('Poll couldnt be created!'));
+                } catch (err) {
+                    this.TwitchIRC.say("Poll couldnt be created!").catch(err => this.Logger.error(err.message));
+                    return Promise.reject(err);
                 }
             },
                 {
-                    description: '<p>Creates a Twitch Poll!</p><p>Default Title, Duration, Choices and other Poll Options can be changed in the Package Settings! Or use the Syntax below!</p><h3>Syntax:</h3><b>!startpoll</span> <span>"[title]"</span> <span>"[choice1]"</span> ... <span>"[choice5]"</span> <span>(option1)</span> <span>(option2)</span> ... <span>(optionN)</span><p><b>title</b> - Poll Title Text (max. 60 characters, dont forget the "")</p><p><b>choiceN</b> - 1 of max. 5 Choice Titles (max. 25 characters, dont forget the "")</p><p><b>options</b> - Options start with a "-" followed by one of the following identifiers and end with an "=" followed by the value.</b></p><p><b>options identifiers</b>: <ul><li><b>d</b> - duration in seconds (min. 15, max. 1800)</li><li><b>bv</b> - Enable Bits Voting (true or false)</li><li><b>bmin</b> - Minimum amount of Bits to vote (min. 0, max. 10.000)</li><li><b>cpv</b> - Enable Channel Points Voting (true or false)</li><li><b>cpmin</b> - Minimum amount of Channel Points to vote (min. 0, max. 10.000)</li></ul></p><p>Note: Only Title and Choices are restricted to be set in order, options can have any order AFTER title and choices(if present)!</p><p>e.g. !startpoll "What should I play today?" "Minecraft" "LoL" "Fortnite" -d=100</p>'
+                    description: '<p>Creates a Twitch Poll!</p><p>Default Title, Duration, Choices and other Poll Options can be changed in the Package Settings! Or use the Syntax below!</p><h3>Syntax:</h3><b>!startpoll</span> <span>"[title]"</span> <span>"[choice1]"</span> ... <span>"[choice5]"</span> <span>(option1)</span> <span>(option2)</span> ... <span>(optionN)</span></b><p><b>title</b> - Poll Title Text (max. 60 characters, dont forget the "")</p><p><b>choiceN</b> - 1 of max. 5 Choice Titles (max. 25 characters, dont forget the "")</p><p><b>options</b> - Options start with a "-" followed by one of the following identifiers and end with an "=" followed by the value.</b></p><p><b>options identifiers</b>: <ul><li><b>d</b> - duration in seconds (min. 15, max. 1800)</li><li><b>bv</b> - Enable Bits Voting (true or false)</li><li><b>bmin</b> - Minimum amount of Bits to vote (min. 0, max. 10.000)</li><li><b>cpv</b> - Enable Channel Points Voting (true or false)</li><li><b>cpmin</b> - Minimum amount of Channel Points to vote (min. 0, max. 10.000)</li></ul></p><p>Note: Only Title and Choices are restricted to be set in order, options can have any order AFTER title and choices(if present)!</p><p>e.g. !startpoll "What should I play today?" "Minecraft" "LoL" "Fortnite" -d=100</p>',
+                    api_requierements: [{ scope: 'channel:manage:polls' }],
+                    viewing_restriction: true
                 }),
             "!stoppoll": new HCCommand("!stoppoll", async (userMessageObj, parameters) => {
-                if (this.CURRENT_POLL_ID === null) return Promise.resolve();
+                if (!userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
+                let polls = null;
 
-                if (userMessageObj.matchUserlevel('moderator')) {
-                    //Create Poll data
-                    let poll_request = {
-                        broadcaster_id: userMessageObj.getRoomID(),
-                        id: this.CURRENT_POLL_ID,
-                        status: 'TERMINATED'
-                    };
-                    
-                    //Stop Poll
-                    try {
-                        await this.TwitchAPI.EndPoll({}, poll_request);
-                    } catch (err) {
+                //Fetch Poll
+                try {
+                    polls = this.TwitchAPI.GetPolls({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
-                    }
-
-                    return Promise.resolve();
+                    //Is running?
+                    if (polls.length === 0 || polls[0].status !== 'ACTIVE') {
+                        this.TwitchIRC.say("No active Poll found!").catch(err => this.Logger.error(err.message));
+                        return Promise.resolve();
+                    } 
+                } catch (err) {
+                    return Promise.reject(err);
                 }
+
+                //Create Poll data
+                let poll_request = {
+                    broadcaster_id: userMessageObj.getRoomID(),
+                    id: polls[0].id,
+                    status: 'TERMINATED'
+                };
+
+                //Stop Poll
+                try {
+                    await this.TwitchAPI.EndPoll({}, poll_request);
+                } catch (err) {
+
+                }
+
+                return Promise.resolve();
             },
                 {
-                    description: '<p>Tops a currently runnning Twitch Poll!</p>'
+                    description: '<p>Tops a currently runnning Twitch Poll!</p>',
+                    api_requierements: [{ scope: 'channel:manage:polls' }],
+                    viewing_restriction: true
                 }),
             "!startpred": new HCCommand("!startpred", async (userMessageObj, parameters) => {
-                let cfg = this.GetConfig();
-                if (this.CURRENT_PRED_DATA !== null) {
-                    this.TwitchIRC.say("Another Prediction is still running!").catch(this.Logger.error(err.message));
-                    return Promise.resolve();
+                if (!userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
+
+                //Fetch Prediction
+                try {
+                    let predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+
+                    //Is running?
+                    if (predictions.length > 0 && predictions[0].status === 'ACTIVE') {
+                        this.TwitchIRC.say("Another Prediction is still running!").catch(err => this.Logger.error(err.message));
+                        return Promise.resolve();
+                    }
+                } catch (err) {
+                    return Promise.reject(err);
                 }
+
+                let cfg = this.GetConfig();
                 
-                if (userMessageObj.matchUserlevel('moderator')) {
-                    //Create Prediction data
-                    let pred_request = {
-                        broadcaster_id: userMessageObj.getRoomID(),
-                        title: cfg['pred_title'],
-                        outcomes: [{ title: cfg['pred_outcome_blue'] }, { title: cfg['pred_outcome_pink'] }],
-                        prediction_window: cfg['pred_duration']
-                    };
+                //Create Prediction
+                let pred_request = {
+                    broadcaster_id: userMessageObj.getRoomID(),
+                    title: cfg['pred_title'],
+                    outcomes: [{ title: cfg['pred_outcome_blue'] }, { title: cfg['pred_outcome_pink'] }],
+                    prediction_window: cfg['pred_duration']
+                };
 
-                    if (parameters.length > 1) {
-                        //Extract "" from Parameters
-                        let better_params = [];
+                if (parameters.length > 1) {
+                    //Extract "" from Parameters
+                    let better_params = [];
 
-                        for (let i = 0; i < parameters.length; i++) {
-                            if (parameters[i].startsWith('"')) {
-                                let new_param = [];
-                                let j = i;
-                                for (j; j < parameters.length; j++) {
-                                    new_param.push(parameters[j]);
-                                    if (parameters[j].endsWith('"')) break;
-                                }
-                                better_params.push(new_param.join(" "));
-                                i = j;
+                    for (let i = 0; i < parameters.length; i++) {
+                        if (parameters[i].startsWith('"')) {
+                            let new_param = [];
+                            let j = i;
+                            for (j; j < parameters.length; j++) {
+                                new_param.push(parameters[j]);
+                                if (parameters[j].endsWith('"')) break;
                             }
-                            else better_params.push(parameters[i]);
+                            better_params.push(new_param.join(" "));
+                            i = j;
                         }
+                        else better_params.push(parameters[i]);
+                    }
 
-                        try {
-                            //Apply Parameters
-                            pred_request.title = better_params[1];
-                            if (better_params.length > 3) pred_request.outcomes = [{ title: better_params[2] }, { title: better_params[3] }];
-                            if (better_params.length > 4) pred_request.prediction_window = parseInt(better_params[4]);
-                        } catch (err) {
-                            this.TwitchIRC.say("Prediction couldnt be created! ").catch(this.Logger.error(err.message));
-                            return Promise.reject(err);
-                        }
-                    } 
-                    
-                    //Create Prediction
                     try {
-                        let pred = await this.TwitchAPI.CreatePrediction({}, pred_request);
-                        if (pred.data.length > 0) {
-                            this.CURRENT_PRED_DATA = pred.data[0];
-                            return Promise.resolve();
+                        //Apply Parameters
+                        pred_request.title = better_params[1];
+                        if (better_params.length > 3) {
+                            pred_request.outcomes = [];
+                            for (let outcome of better_params.slice(2)) {
+                                if (outcome.charAt(0) !== '"') break;
+                                pred_request.outcomes.push({ title: outcome });
+                            }
                         }
-                        
-                        this.TwitchIRC.say("Prediction couldnt be created!").catch(this.Logger.error(err.message));
-                        return Promise.reject(new Error('Prediction couldnt be created!'));
+                        if (better_params[better_params.length - 1].charAt(0) !== '"') pred_request.prediction_window = parseInt(better_params[4]);
                     } catch (err) {
-                        this.TwitchIRC.say("Prediction couldnt be created!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say("Prediction couldnt be created! ").catch(err => this.Logger.error(err.message));
                         return Promise.reject(err);
                     }
                 }
+
+                //Create Prediction
+                try {
+                    let pred = await this.TwitchAPI.CreatePrediction({}, pred_request);
+                    if (pred.data.length > 0) return Promise.resolve();
+
+                    this.TwitchIRC.say("Prediction couldnt be created!").catch(err => this.Logger.error(err.message));
+                    return Promise.reject(new Error('Prediction couldnt be created!'));
+                } catch (err) {
+                    this.TwitchIRC.say("Prediction couldnt be created!").catch(err => this.Logger.error(err.message));
+                    return Promise.reject(err);
+                }
             },
                 {
-                    description: '<p>Creates a Twitch Prediction!</p><p>Default Title, Duration and Outcomes can be changed in the Package Settings! Or use the Syntax below!</p><h3>Syntax:</h3><b>!startpred</span> <span>"[title]"</span> <span>"[outcome blue]"</span> <span>"[outcome pink]"</span> <span>duration</span></b><p><b>title</b> - Prediction Title Text (max. 45 characters, dont forget the "")</p><p><b>outcome blue/pink</b> - 2 Outcomes Titles (max. 25 characters, dont forget the "")</p><p><b>duration</b> - Prediction voting Window in Seconds (min. 1, max. 1800)</p><p>e.g. !startpred "Will I win this match?" "YEP" "N OMEGALUL" 100</p>'
+                    description: '<p>Creates a Twitch Prediction!</p><p>Default Title, Duration and Outcomes can be changed in the Package Settings! Or use the Syntax below!</p><h3>Syntax:</h3><b>!startpred</span> <span>"[title]"</span> <span>"[outcome 1]"</span> <span>"[outcome 2]"</span> <span>(outcome 3)</span> ... <span>(outcome 10)</span> <span>duration</span></b><p><b>title</b> - Prediction Title Text (max. 45 characters, dont forget the "")</p><p><b>outcome 1-10</b> - Outcome Titles (max. 25 characters, min. 2 needed, max. 10 allowed, dont forget the "")</p><p><b>duration</b> - Prediction voting Window in Seconds (min. 1, max. 1800)</p><p>e.g. !startpred "Will I win this match?" "YEP" "N OMEGALUL" 100</p>',
+                    api_requierements: [{ scope: 'channel:manage:predictions' }],
+                    viewing_restriction: true
                 }),
             "!lockpred": new HCCommand("!lockpred", async (userMessageObj, parameters) => {
-                if (this.CURRENT_PRED_DATA === null) return Promise.resolve();
+                if (!userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
+                let predictions = null;
 
-                if (userMessageObj.matchUserlevel('moderator')) {
-                    //Create Prediction data
-                    let pred_request = {
-                        broadcaster_id: userMessageObj.getRoomID(),
-                        id: this.CURRENT_PRED_DATA.id,
-                        status: 'LOCKED'
-                    };
-                    
-                    //Lock Prediction
-                    try {
-                        await this.TwitchAPI.EndPrediction({}, pred_request);
-                    } catch (err) {
+                //Fetch Prediction
+                try {
+                    predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
+                    //Is running?
+                    if (predictions.length === 0 || predictions[0].status !== 'ACTIVE') {
+                        this.TwitchIRC.say("No Prediction found!").catch(err => this.Logger.error(err.message));
+                        return Promise.resolve();
                     }
-
-                    return Promise.resolve();
+                } catch (err) {
+                    return Promise.reject(err);
                 }
+
+                //Create Prediction data
+                let pred_request = {
+                    broadcaster_id: userMessageObj.getRoomID(),
+                    id: predictions[0].id,
+                    status: 'LOCKED'
+                };
+
+                //Lock Prediction
+                try {
+                    await this.TwitchAPI.EndPrediction({}, pred_request);
+                } catch (err) {
+
+                }
+
+                return Promise.resolve();
             },
                 {
-                    description: '<p>Locks a currently runnning Twitch Prediction from further voting!</p>'
+                    description: '<p>Locks a currently runnning Twitch Prediction from further voting!</p>',
+                    api_requierements: [{ scope: 'channel:manage:predictions' }],
+                    viewing_restriction: true
                 }),
             "!cancelpred": new HCCommand("!cancelpred", async (userMessageObj, parameters) => {
-                if (this.CURRENT_PRED_DATA === null) return Promise.resolve();
+                if (!userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
+                let predictions = null;
 
-                if (userMessageObj.matchUserlevel('moderator')) {
-                    //Create Prediction data
-                    let pred_request = {
-                        broadcaster_id: userMessageObj.getRoomID(),
-                        id: this.CURRENT_PRED_DATA.id,
-                        status: 'CANCELED'
-                    };
-                    
-                    //Cancel Prediction
-                    try {
-                        await this.TwitchAPI.EndPrediction({}, pred_request);
-                        this.CURRENT_PRED_DATA == null;
-                    } catch (err) {
+                //Fetch Prediction
+                try {
+                    predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
+                    //Is running?
+                    if (predictions.length === 0 || predictions[0].status !== 'ACTIVE') {
+                        this.TwitchIRC.say("No Prediction found!").catch(err => this.Logger.error(err.message));
+                        return Promise.resolve();
                     }
-
-                    return Promise.resolve();
+                } catch (err) {
+                    return Promise.reject(err);
                 }
+                
+                //Create Prediction data
+                let pred_request = {
+                    broadcaster_id: userMessageObj.getRoomID(),
+                    id: predictions[0].id,
+                    status: 'CANCELED'
+                };
+
+                //Cancel Prediction
+                try {
+                    await this.TwitchAPI.EndPrediction({}, pred_request);
+                } catch (err) {
+
+                }
+
+                return Promise.resolve();
             },
                 {
-                    description: '<p>Cancels a currently runnning Twitch Prediction and refunds all points!</p>'
+                    description: '<p>Cancels a currently runnning Twitch Prediction and refunds all points!</p>',
+                    api_requierements: [{ scope: 'channel:manage:predictions' }],
+                    viewing_restriction: true
                 }),
             "!resolvepred": new HCCommand("!resolvepred", async (userMessageObj, parameters) => {
-                if (this.CURRENT_PRED_DATA === null) return Promise.resolve();
-                if (!this.CURRENT_PRED_DATA.outcomes.find(elt => elt.color.toLowerCase() === parameters[1].toLowerCase())) {
-                    this.TwitchIRC.say("Not a valid Outcome! Use Blue or Pink!").catch(this.Logger.error(err.message));
+                if (!userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
+
+                if (isNaN(parameters[1])) {
+                    this.TwitchIRC.say("Not a valid Outcome! Use a Number from 1 to 10!").catch(err => this.Logger.error(err.message));
+                    return Promise.reject();
+                }
+                
+                let predictions = null;
+
+                //Fetch Prediction
+                try {
+                    predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+
+                    //Is running?
+                    if (predictions.length === 0 || predictions[0].status !== 'ACTIVE') {
+                        this.TwitchIRC.say("No Prediction found!").catch(err => this.Logger.error(err.message));
+                        return Promise.resolve();
+                    }
+                } catch (err) {
+                    return Promise.reject(err);
+                }
+
+                if (!predictions[0].outcomes.length < parseInt(parameters[1])) {
+                    this.TwitchIRC.say("Not a valid Outcome!").catch(err => this.Logger.error(err.message));
                     return Promise.reject();
                 }
 
-                if (userMessageObj.matchUserlevel('moderator')) {
-                    //Create Prediction data
-                    let pred_request = {
-                        broadcaster_id: userMessageObj.getRoomID(),
-                        id: this.CURRENT_PRED_DATA.id,
-                        status: 'RESOLVED',
-                        winning_outcome_id: this.CURRENT_PRED_DATA.outcomes.find(elt => elt.color.toLowerCase() === parameters[1].toLowerCase()).id
-                    };
-                    
-                    //Resolve Prediction
-                    try {
-                        let result = await this.TwitchAPI.EndPrediction({}, pred_request);
-                        if (result.data[0].id === this.CURRENT_PRED_DATA.id) this.CURRENT_PRED_DATA = null;
-                    } catch (err) {
+                //Create Prediction
+                let pred_request = {
+                    broadcaster_id: userMessageObj.getRoomID(),
+                    id: predictions[0].id,
+                    status: 'RESOLVED',
+                    winning_outcome_id: predictions[0].outcomes[parseInt(parameters[1])].id
+                };
 
-                    }
+                //Resolve Prediction
+                try {
+                    await this.TwitchAPI.EndPrediction({}, pred_request);
+                } catch (err) {
 
-                    return Promise.resolve();
                 }
+
+                return Promise.resolve();
             },
                 {
-                    description: '<p>Resolves a currently runnning Twitch Prediction and hands out rewards! Use "!resolvepred blue" or "!resolvepred pink" to select an outcome!</p>'
+                    description: '<p>Resolves a currently runnning Twitch Prediction and hands out rewards! Use "!resolvepred 1", "!resolvepred 2" ... "!resolvepred 10" to select an outcome!</p>',
+                    api_requierements: [{ scope: 'channel:manage:predictions' }],
+                    viewing_restriction: true
                 }),
             "!commands": new HCCommand("!commands", async (userMessageObj, parameters) => {
                 if (!userMessageObj.matchUserlevel('moderator')) {
@@ -510,7 +651,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 if (action === 'remove') {
                     if (cmd_index < 0) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " doesnt exists!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " doesnt exists!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command not found!'));
                     }
 
@@ -519,17 +660,17 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                     //Failed
                     if (s !== true) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be removed!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be removed!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error(s));
                     }
 
                     //Success
-                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " removed successfully!").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " removed successfully!").catch(err => this.Logger.error(err.message));
                     return Promise.resolve();
                 } else if (action === 'rename') {
                     //Cur Command
                     if (cmd_index < 0) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " doesnt exists!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " doesnt exists!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command not found!'));
                     }
 
@@ -544,7 +685,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     });
 
                     if (new_cmd_index >= 0) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + output + " allready exists!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + output + " allready exists!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command allready exists!'));
                     }
 
@@ -553,12 +694,12 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                     //Failed
                     if (s !== true) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be renamed!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be renamed!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error(s));
                     }
 
                     //Success
-                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " renamed successfully to " + output + " !").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " renamed successfully to " + output + " !").catch(err => this.Logger.error(err.message));
                     return Promise.resolve();
                 }
 
@@ -566,13 +707,13 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 let json = { output, name };
                 for (let opt of options) {
                     if (identifiers[opt.name] === undefined) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command could not be created/updated - Issue: Unsupported identifier " + opt.name).catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command could not be created/updated - Issue: Unsupported identifier " + opt.name).catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command Options wrong!'));
                     }
 
                     let result = identifiers[opt.name].func(opt.value, opt.start);
                     if (result === undefined || result === null) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command could not be created/updated - Issue: Wrong Format or Value of " + opt.name).catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command could not be created/updated - Issue: Wrong Format or Value of " + opt.name).catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command Options wrong!'));
                     }
                     json[identifiers[opt.name].trans] = result;
@@ -582,10 +723,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 if (action === 'add') {
                     if (cmd_index > 0) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " allready exists!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " allready exists!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command allready exists!'));
                     } else if (!json.output && !json.alias) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Output must be supplied!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Output must be supplied!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command Output not supplied!'));
                     }
 
@@ -593,16 +734,16 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                     //Failed
                     if (s !== true) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be created!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be created!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error(s));
                     }
 
                     //Success
-                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " created successfully!").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " created successfully!").catch(err => this.Logger.error(err.message));
                     return Promise.resolve();
                 } else if (action === 'edit') {
                     if (cmd_index < 0) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " doesnt exists!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " doesnt exists!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Command not found!'));
                     }
 
@@ -610,17 +751,17 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                     //Failed
                     if (s !== true) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be updated!").catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command failed to be updated!").catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error(s));
                     }
 
                     //Success
-                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " updated successfully!").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Command " + name + " updated successfully!").catch(err => this.Logger.error(err.message));
                     return Promise.resolve();
                 }
 
 
-                this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Action " + action + " not supported!").catch(this.Logger.error(err.message));
+                this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Action " + action + " not supported!").catch(err => this.Logger.error(err.message));
                 return Promise.resolve();
             },
                 {
@@ -640,26 +781,27 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     try {
                         value_obj = JSON.parse(value);
                     } catch (err) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Value not in the correct JSON format! Error: " + err.message).catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Value not in the correct JSON format! Error: " + err.message).catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     }
 
                     let s = this.editCustomVariable(path, value_obj, userMessageObj.getDisplayName());
-                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " successfully editted!").catch(this.Logger.error(err.message));
-                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " failed editting!").catch(this.Logger.error(err.message));
+                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " successfully editted!").catch(err => this.Logger.error(err.message));
+                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " failed editting!").catch(err => this.Logger.error(err.message));
                 } else if (action === 'remove') {
                     let s = this.removeCustomVariable(path, userMessageObj.getDisplayName());
-                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " successfully removed!").catch(this.Logger.error(err.message));
-                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " failed removing!").catch(this.Logger.error(err.message));
+                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " successfully removed!").catch(err => this.Logger.error(err.message));
+                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Variable " + path + " failed removing!").catch(err => this.Logger.error(err.message));
                 } else {
-                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Action " + action + " not supported!").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Action " + action + " not supported!").catch(err => this.Logger.error(err.message));
                     return Promise.resolve();
                 }
 
                 return Promise.resolve();
             },
                 {
-                    description: '<p>Used to add/remove/edit Custom Command Variables. </p><h3>Syntax:</h3><b>!variables <span>action</span> <span>path</span> <span>[value]</span></b><p><b>action</b> - edit or remove</p><p><b>path</b> - a JSON formatted path in an object. e.g. User.Name or Users.0.Name</p><p><b>value</b> - Stringified JSON Value e.g. "text here" or 12 or [4, 8, 15, 16, 32, 42]</p><p>e.g. !variables add a.b c</p><b>!variables edit <span>path</span> <span>value</span></b><p>Adds/Edits the object/value at the given path to the given value. Value is requiered. The full path will be created, if needed.</p><b>!variables remove <span>path</span></b><p>Removes the object/value at the given path. Value is not needed!</p>'
+                    description: '<p>Used to add/remove/edit Custom Command Variables. </p><h3>Syntax:</h3><b>!variables <span>action</span> <span>path</span> <span>[value]</span></b><p><b>action</b> - edit or remove</p><p><b>path</b> - a JSON formatted path in an object. e.g. User.Name or Users.0.Name</p><p><b>value</b> - Stringified JSON Value e.g. "text here" or 12 or [4, 8, 15, 16, 32, 42]</p><p>e.g. !variables add a.b c</p><b>!variables edit <span>path</span> <span>value</span></b><p>Adds/Edits the object/value at the given path to the given value. Value is requiered. The full path will be created, if needed.</p><b>!variables remove <span>path</span></b><p>Removes the object/value at the given path. Value is not needed!</p>',
+                    viewing_restriction: true
                 }),
             "!timers": new HCCommand("!variables", async (userMessageObj, parameters) => {
                 if (!userMessageObj.matchUserlevel('moderator')) {
@@ -697,13 +839,13 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 let json = { name, output, interval };
                 for (let opt of options) {
                     if (identifiers[opt.name] === undefined) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer could not be created/updated - Issue: Unsupported identifier " + opt.name).catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer could not be created/updated - Issue: Unsupported identifier " + opt.name).catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Timer Options wrong!'));
                     }
 
                     let result = identifiers[opt.name].func(opt.value, opt.start);
                     if (result === undefined || result === null) {
-                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer could not be created/updated - Issue: Wrong Format or Value of " + identifiers[opt.name].trans).catch(this.Logger.error(err.message));
+                        this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer could not be created/updated - Issue: Wrong Format or Value of " + identifiers[opt.name].trans).catch(err => this.Logger.error(err.message));
                         return Promise.reject(new Error('Timer Options wrong!'));
                     }
                     json[identifiers[opt.name].trans] = result;
@@ -718,29 +860,85 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 } else if (action === 'remove') {
                     let s = this.removeTimer(name, userMessageObj.getDisplayName());
                     if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " successfully removed!").catch(err => this.Logger.error(err.message));
-                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " failed removing! Error: " + s).catch(this.Logger.error(err.message));
+                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " failed removing! Error: " + s).catch(err => this.Logger.error(err.message));
                 } else if (action === 'start') {
                     let s = this.startTimer(name);
-                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " started!").catch(this.Logger.error(err.message));
-                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " failed starting! Error: " + s).catch(this.Logger.error(err.message));
+                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " started!").catch(err => this.Logger.error(err.message));
+                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " failed starting! Error: " + s).catch(err => this.Logger.error(err.message));
                 } else if (action === 'stop') {
                     let s = this.stopTimer(name);
-                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " stopped!").catch(this.Logger.error(err.message));
-                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " failed stopping! Error: " + s).catch(this.Logger.error(err.message));
+                    if (s === true) this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " stopped!").catch(err => this.Logger.error(err.message));
+                    else this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Timer " + name + " failed stopping! Error: " + s).catch(err => this.Logger.error(err.message));
                 } else {
-                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Action " + action + " not supported!").catch(this.Logger.error(err.message));
+                    this.TwitchIRC.say(userMessageObj.getDisplayName() + " -> Action " + action + " not supported!").catch(err => this.Logger.error(err.message));
                 }
 
                 return Promise.resolve();
             },
                 {
-                    description: '<p>Used to add/remove/edit/start/stop Timers. </p><h3>Syntax:</h3><b>!timers <span>action</span> <span>interval</span> <span>(option1)</span> <span>(option2)</span> ... <span>(optionN)</span> <span>[output]</span></b><p><b>action</b> - edit or remove</p><b>interval</b> - string code containing the interval time e.g. 1m , 50s or 1h2m10s</p><b>options</b> - Options start with a "-" followed by one of the following identifiers and end with an "=" followed by the value.</b></p><p><b>options identifiers</b>: <ul><li><b>en</b> - enabled (true (default) or false)</li><li><b>dc</b> - description</li><li><b>a</b> - Alias can trigger other Commands. Alias Text must be contained in "s. e.g. using alias like : -a="!game Apex Legends" will set the game to Apex Legends without the User having to call !game. Userlevels only apply on the command with the alias! Using the same example: any user can set the game to Apex Legends if no userlevel was set.</li></ul></p><p><b>output</b> - Text to be sent when interval is over. Is not needed/overwritten when using an alias!</p>'
+                    description: '<p>Used to add/remove/edit/start/stop Timers. </p><h3>Syntax:</h3><b>!timers <span>action</span> <span>interval</span> <span>(option1)</span> <span>(option2)</span> ... <span>(optionN)</span> <span>[output]</span></b><p><b>action</b> - edit or remove</p><b>interval</b> - string code containing the interval time e.g. 1m , 50s or 1h2m10s</p><b>options</b> - Options start with a "-" followed by one of the following identifiers and end with an "=" followed by the value.</b></p><p><b>options identifiers</b>: <ul><li><b>en</b> - enabled (true (default) or false)</li><li><b>dc</b> - description</li><li><b>a</b> - Alias can trigger other Commands. Alias Text must be contained in "s. e.g. using alias like : -a="!game Apex Legends" will set the game to Apex Legends without the User having to call !game. Userlevels only apply on the command with the alias! Using the same example: any user can set the game to Apex Legends if no userlevel was set.</li></ul></p><p><b>output</b> - Text to be sent when interval is over. Is not needed/overwritten when using an alias!</p>',
+                    viewing_restriction: true
+                }),
+            "!watchtime": new HCCommand("!watchtime", async (userMessageObj, parameters) => {
+                //Fetch Users
+                let user;
+
+                try {
+                    user = await this.WatchTimeDB.findOne({ user_login: userMessageObj.getLoginName() });
+                } catch (err) {
+                    this.TwitchIRC.reply(userMessageObj.getID(), 'Database Error!', userMessageObj.getChannel()).catch(err => this.Logger.error(err.message));
+                    return Promise.reject(err);
+                }
+
+                //Not Found
+                if (!user) {
+                    this.TwitchIRC.reply(userMessageObj.getID(), 'Your Watchtime hasent been tracked yet! Wait a few minutes and try again!', userMessageObj.getChannel()).catch(err => this.Logger.error(err.message));
+                    return Promise.reject(err);
+                }
+
+                //Print Watchtime
+                let s = "You have been watching for ";
+
+                let h = Math.floor(user.count / 60);
+                let m = user.count - h * 60;
+
+                if (h > 0) s += h + ' hours and ';
+                s += m + ' minutes!';
+
+                this.TwitchIRC.reply(userMessageObj.getID(), s, userMessageObj.getChannel()).catch(err => this.Logger.error(err.message));
+                return Promise.resolve();
+            },
+                {
+                    description: '<p>Used to fetch your Watchtime. </p>'
+                }),
+            "!v": new HCCommand("!v", async (userMessageObj, parameters) => {
+                if (userMessageObj.matchUserlevel('moderator')) return Promise.resolve();
+
+                try {
+                    await this.TwitchAPI.BanUser(
+                        { broadcaster_id: userMessageObj.getRoomID(), moderator_id: this.TwitchIRC.getUserID() },
+                        { user_id: userMessageObj.getUserID(), duration: 1, reason: '!v Command triggered successfully' }
+                    );
+                } catch (err) {
+                    console.log(err);
+                }
+                return Promise.resolve();
+            },
+                {
+                    description: '<p>Timesout the user for 1s. (Deleting all messages)</p>'
                 })
         };
+
         for (let cmd in this.HardcodedCommands) {
             if (cfg['disabled_hccommands'].find(elt => elt === this.HardcodedCommands[cmd].getName())) {
                 this.HardcodedCommands[cmd].setEnable(false);
             }
+        }
+
+        for (let rename of cfg['renamed_hccommands']) {
+            let orig_name = rename.split('-')[0];
+            let new_name = rename.split('-')[1];
+            this.renameHardCoded(orig_name, new_name, 'Init');
         }
 
         this.CommandVariables = {
@@ -956,7 +1154,8 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             }),
             "twitch": new Variable("Twitch", {
                 "description": "You can use the Twitch variable to display various profile information about a specific Twitch account. (WARNING: Due to the New Twitch API Endpoints for fps and resolution informations are not available) <h3>Enhanced Usage</h3><p>$(<span>twitch </span> <span>username</span> \"<span>formatted string</span>\")</p><p>delay - prints the stream delay set by the broadcaster</p><p>emotes - prints all emotes of this channel</p><p>emotes_t1 - prints all T1 emotes of this channel</p><p>emotes_t2 - prints all T2 emotes of this channel</p><p>emotes_t3 - prints all T3 emotes of this channel</p><p>emotes_bits - prints all Bits emotes of this channel</p><p>emotes_follow - prints all follower emotes of this channel</p>",
-                "Nightbot": { "version": "22nd Oct 2020", "enhanced": true  }
+                "Nightbot": { "version": "22nd Oct 2020", "enhanced": true },
+                api_requierements: [{ subscriberCount: 'channel:read:subscriptions' }]
             }, async (variableString, userMessageObj, commandOrig, parameters) => {
                 let variable_params = variableString.substring(2, variableString.length - 1).split(" ");
                 let username = variable_params[1];
@@ -1170,10 +1369,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         };
 
         //TwitchIRC Capability
-        if (this.TwitchIRC) this.TwitchIRC.on('chat', async (channel, userstate, message, self) => {
+        if (this.TwitchIRC) this.TwitchIRC.on('chat', async (channel, user_login, message, tags, self) => {
             if (!this.isEnabled()) return Promise.resolve();
 
-            let messageObj = new TWITCHIRC.Message(channel, userstate, message);
+            let messageObj = new TWITCHIRC.Message(channel, user_login, message, tags);
             let cfg = this.GetConfig();
 
             //Update Timers
@@ -1181,7 +1380,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 //Update Lines for Timers
                 timer.lines++;
             }
-
+            
             //Find Commands
             try {
                 if (!self) {
@@ -1211,13 +1410,9 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         });
 
         //TwitchAPI EventSubs
-        this.TwitchAPI.AddEventSubCallback('channel.poll.begin', this.getName(), (body) => { if (this.CURRENT_POLL_ID === null) this.CURRENT_POLL_ID = body.event.id; });
-        this.TwitchAPI.AddEventSubCallback('channel.poll.progress', this.getName(), (body) => { if (this.CURRENT_POLL_ID === null) this.CURRENT_POLL_ID = body.event.id; });
-        this.TwitchAPI.AddEventSubCallback('channel.poll.end', this.getName(), (body) => { if (this.CURRENT_POLL_ID === body.event.id) this.CURRENT_POLL_ID = null; });
-
-        this.TwitchAPI.AddEventSubCallback('channel.prediction.begin', this.getName(), (body) => { if (this.CURRENT_PRED_DATA === null) this.CURRENT_PRED_DATA = body.event; });
-        this.TwitchAPI.AddEventSubCallback('channel.prediction.progress', this.getName(), (body) => { if (this.CURRENT_PRED_DATA === null) this.CURRENT_PRED_DATA = body.event; });
-        this.TwitchAPI.AddEventSubCallback('channel.prediction.end', this.getName(), (body) => { if ((this.CURRENT_PRED_DATA || {}).id === body.event.id) this.CURRENT_PRED_DATA = null; });
+        this.TwitchAPI.AddEventSubCallback('stream.online', this.getName(), (body) => this.EventSub_Online(body));
+        this.TwitchAPI.AddEventSubCallback('stream.offline', this.getName(), (body) => this.EventSub_Offline(body));
+        this.TwitchAPI.AddEventSubCallback('channel.update', this.getName(), (body) => this.EventSub_Update(body));
 
         //STATIC FILE ROUTING
         let StaticRouter = express.Router();
@@ -1250,12 +1445,15 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
             }
 
+            //Custom
             for (let cmd of this.CustomCommands) {
-                if (authenticated || cmd.enabled === true) custom_commands.push(cmd);
+                if (authenticated || (cmd.enabled === true && cmd.viewing_restriction === false)) custom_commands.push(cmd);
             }
 
+            //Hardcoded
             for (let cmd in this.HardcodedCommands) {
-                if (authenticated || this.HardcodedCommands[cmd].isEnabled()) hardcoded_commands[cmd] = this.HardcodedCommands[cmd].toJSON();
+                let cmd_obj = this.HardcodedCommands[cmd];
+                if (authenticated || (cmd_obj.isEnabled() && !cmd_obj.isViewingRestricted())) hardcoded_commands[cmd] = cmd_obj.toJSON();
             }
 
             return Promise.resolve(res.json({ Custom: custom_commands, Hardcoded: hardcoded_commands }));
@@ -1288,7 +1486,67 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         APIRouter.get('/oncooldown', (req, res, next) => {
             res.json({ onCooldown: this.onCooldown });
         });
-        this.setAPIRouter(APIRouter);
+        APIRouter.get('/page', async (req, res, next) => {
+            let custom_commands = [];
+            let hardcoded_commands = {};
+            let authenticated = false;
+
+            try {
+                await this.WebAppInteractor.AuthorizeUser(res.locals.user, { user_level: 'moderator' });
+                authenticated = true;
+            } catch (err) {
+
+            }
+
+            //Commands
+            for (let cmd of this.CustomCommands) {
+                if (authenticated || (cmd.enabled === true && cmd.viewing_restriction === false)) custom_commands.push(cmd);
+            }
+
+            for (let cmd in this.HardcodedCommands) {
+                let cmd_obj = this.HardcodedCommands[cmd];
+                if (authenticated || (cmd_obj.isEnabled() && !cmd_obj.isViewingRestricted())) hardcoded_commands[cmd] = cmd_obj.toJSON();
+            }
+
+            //Timers
+            let act_timers = [];
+            if (authenticated) {
+                for (let tmr of this.ActiveTimers) {
+                    let temp_tmr = {};
+                    for (let key in tmr) {
+                        if (key !== 'interval') temp_tmr[key] = tmr[key];
+                    }
+                    act_timers.push(temp_tmr);
+                }
+            }
+
+            let timers = [];
+            for (let tmr of this.Timers) {
+                if (authenticated || (tmr.enabled === true && tmr.viewing_restriction === false)) {
+                    timers.push(tmr);
+                }
+            }
+
+            //Variables
+            let variables = [];
+            if (authenticated) {
+                for (let vari in this.CommandVariables) {
+                    variables.push(this.CommandVariables[vari].getExtendedDetails());
+                }
+            }
+            
+            return Promise.resolve(res.json({
+                Custom: custom_commands,
+                Hardcoded: hardcoded_commands,
+                onCooldown: this.onCooldown,
+                Timers: timers,
+                ActiveTimers: act_timers,
+                scopes: authenticated ? this.TwitchAPI.GetScopes() : [],
+                variables: variables,
+                custom_variables: authenticated ? this.CustomVariables : null
+            }));
+        });
+        this.setAuthenticatedAPIRouter(APIRouter, { user_level: () => this.Config.GetConfig()['website_userlevel'] });
 
         //Authenticated API ENDPOINTS
         let AuthAPIRouter = express.Router();
@@ -1305,7 +1563,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             })
             .move((req, res, next) => {
                 let s = this.renameCommand(req.body.oldname, req.body.newname, (res.locals.user || {}).preferred_username);
-                if (s === true) res.json({ data: "Command: " + req.body.name + " RENAMED!" });
+                if (s === true) res.json({ data: "Command: " + req.body.oldname + " RENAMED!" });
                 else res.json({ err: s });
             })
             .delete((req, res, next) => {
@@ -1318,7 +1576,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             .put((req, res, next) => {
                 let command = this.HardcodedCommands[req.body['name']];
                 if (!command) return res.sendStatus(404);
-                command.setEnable(req.body['state'] === undefined ? req.body['state'] :  !command.isEnabled());
+                command.setEnable(req.body['state'] === undefined ? req.body['state'] : !command.isEnabled());
 
                 let new_disabled = cfg['disabled_hccommands'];
 
@@ -1327,10 +1585,32 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 } else if (!new_disabled.find(elt => elt === command.getName())) {
                     new_disabled.push(command.getName());
                 }
-                
+
                 let error = this.Config.UpdateSetting('disabled_hccommands', new_disabled);
                 if (error !== true) return res.json({ err: error });
                 res.sendStatus(200);
+            })
+            .move((req, res, next) => {
+                let s = this.renameHardCoded(req.body.orig_name, req.body.new_name, (res.locals.user || {}).preferred_username);
+
+                if (s !== true) return res.json({ err: s });
+
+                let renamed = this.Config.GetConfig()['renamed_hccommands'];
+
+                let idx = -1;
+                renamed.find((elt, index) => {
+                    if (elt.startsWith(req.body.orig_name + '-')) {
+                        idx = index;
+                        return true;
+                    }
+                    return false;
+                });
+
+                if (idx > -1) renamed.splice(idx, 1);
+                renamed.push(req.body.orig_name + '-' + req.body.new_name);
+
+                this.Config.UpdateSetting('renamed_hccommands', renamed);
+                res.json({ data: "HC Command: " + req.body.orig_name + " RENAMED!" });
             });
 
         AuthAPIRouter.route('/variables/custom')
@@ -1401,14 +1681,6 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
         //PackageInterconnect
         this.allowPackageInterconnects('all');
-        
-        if (!fs.existsSync(path.resolve(cfg['data_dir']))) {
-            try {
-                fs.mkdirSync(path.resolve(cfg['data_dir']));
-            } catch (err) {
-                this.Logger.error(err.message);
-            }
-        }
 
         this.SETUP_COMPLETE = true;
         return this.reload();
@@ -1437,13 +1709,116 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         this.Logger.warn("Package disabled!");
         return Promise.resolve();
     }
-    
+
+    EventSub_Online(body) {
+        if (this.WatchTime_Interval === null) {
+            this.WatchTime_Interval = setInterval(() => {
+                this.AwardWatchTime().catch(err => this.Logger.error(err.message));
+            }, 1000 * 60);
+        }
+
+        //Enable/Disable Timers
+        for (let tmr of this.Timers) {
+            if (tmr.auto_enable === 'offline') this.stopTimer(tmr.name);
+            if (tmr.auto_enable === 'online') this.startTimer(tmr.name);
+        }
+    }
+    EventSub_Offline(body) {
+        if (this.WatchTime_Interval) {
+            clearInterval(this.WatchTime_Interval);
+            this.AwardWatchTime().catch(err => this.Logger.error(err.message));
+        }
+
+        //Enable/Disable Timers
+        for (let tmr of this.Timers) {
+            if (tmr.auto_enable === 'online') this.stopTimer(tmr.name);
+            if (tmr.auto_enable === 'offline') this.startTimer(tmr.name);
+        }
+    }
+    EventSub_Update(body) {
+        //Enable/Disable Timers
+        for (let tmr of this.Timers) {
+            if (tmr.auto_enable === 'game' && body.event.category_name === tmr.game) this.startTimer(tmr.name);
+            if (tmr.auto_enable === 'game' && body.event.category_name !== tmr.game) this.stopTimer(tmr.name);
+        }
+    }
+    async Stream_Status_Poll() {
+        try {
+            let stream = await this.TwitchAPI.GetStreams({ user_login: this.TwitchIRC.getChannel() }).data[0];
+
+            if (stream) {
+                EventSub_Online();
+                EventSub_Update({
+                    event: {
+                        category_name: stream.game_name
+                    }
+                });
+            }
+            else EventSub_Offline();
+        } catch (err) {
+            console.log(err);
+        }
+    }
+
+    async Controllable_PollStream() {
+        if (!this.isEnabled()) return Promise.reject(new Error('Twitch IRC is disabled'));
+
+        try {
+            await this.Stream_Status_Poll();
+            return Promise.resolve("Stream Data Polled and Commands / Timers updated!");
+        } catch (err) {
+            return Promise.reject(err);
+        }
+    }
+    async AwardWatchTime() {
+        let viewers = [];
+
+        try {
+            let json = await this.TwitchAPI.GetChannelViewers(this.TwitchIRC.getChannel());
+            
+            for (let key in json.chatters) {
+                for (let viewer of json.chatters[key]) {
+                    viewers.push(viewer);
+                }
+            }
+        } catch (err) {
+            this.Logger.warn('Watchtime viewerlist not available!');
+            return Promise.reject(err);
+        }
+
+        //Fetch Users
+        let db_users = [];
+
+        try {
+            db_users = await this.WatchTimeDB.find({ });
+        } catch (err) {
+            this.Logger.warn('DB viewerlist not available!');
+            return Promise.reject(err);
+        }
+        
+        for (let viewer of viewers) {
+            let user = db_users.findOne({ user_login: viewer });
+            if (user) user.count++;
+            else db_users.push({ user_login: viewer, count: 1 });
+        }
+        
+        //Update DB
+        try {
+            await this.WatchTimeDB.replace(db_users);
+        } catch (err) {
+            this.Logger.warn('DB viewerlist wasnt updated!');
+            return Promise.reject(err);
+        }
+    }
+
     //////////////////////////////////////////////
     //      COMMAND CHECKING AND EXECUTION
     //////////////////////////////////////////////
 
     async CommandHandler(messageObj) {
         return new Promise(async (resolve, reject) => {
+            let start_time = Date.now();
+            
             let detectedCmds = this.checkMessage(messageObj.getMessage());
             let lastEnd = 0;
             let successfullCommands = [];
@@ -1506,6 +1881,9 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     tempDataColComd.params = parameters;
 
                     successfullCommands.push(tempDataColComd);
+
+                    this.STAT_NUB_COMMANDS++;
+                    this.STAT_NUB_COMMANDS_PER_10++;
                 }
 
                 //Detection Type CHECK - Block NEXT
@@ -1513,6 +1891,12 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     break;
                 }
             }
+
+
+            let end_time = Date.now();
+
+            this.STAT_AVG_TIME = Math.floor((this.STAT_AVG_TIME + end_time - start_time) / this.STAT_NUB_COMMANDS);
+            this.STAT_AVG_TIME_PER_10 = Math.floor((this.STAT_AVG_TIME_PER_10 + end_time - start_time) / this.STAT_NUB_COMMANDS_PER_10);
             
             resolve(successfullCommands);
         }).catch(err => {
@@ -1528,9 +1912,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
         for (let word of message.split(" ")) {
             for (let hcCMDName in this.HardcodedCommands) {
+                
                 let hcCMD = this.HardcodedCommands[hcCMDName];
                 if (word !== hcCMDName || !hcCMD.isEnabled()) continue;
-
+                
                 let json = hcCMD.toJSON();
                 json.name = hcCMDName;
                 out.push({
@@ -1543,8 +1928,14 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
             for (let cuCMD of this.CustomCommands) {
                 if (cuCMD.enabled === false) continue;
-                if (word !== cuCMD.name && cuCMD.case === true) continue;
-                if (word.toLowerCase() !== cuCMD.name.toLowerCase() && cuCMD.case === false) continue;
+                
+                if (cuCMD.regex) {
+                    let regex = new RegExp(cuCMD.regex);
+                    if (!regex.test(word)) continue;
+                } else {
+                    if (word !== cuCMD.name && cuCMD.case === true) continue;
+                    if (word.toLowerCase() !== cuCMD.name.toLowerCase() && cuCMD.case === false) continue;
+                }
 
                 out.push({
                     type: "CUSTOM",
@@ -1593,8 +1984,19 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             }
 
             if (typeof out == "string") {
-                if(out.trim() !== "")
-                    return this.TwitchIRC.say(out);
+                if (out.trim() === "") return Promise.resolve();
+
+                console.log(out);
+
+                let command = out.split(' ')[0];
+
+                for (let cmd in TWITCHIRC.IRC_COMMANDS) {
+                    if (command !== cmd) continue;
+                    return this.TwitchIRC[cmd.substring(1)](out.substring(cmd.indexOf(' ')));
+                    break;
+                }
+
+                return this.TwitchIRC.say(out);
             } else {
                 return Promise.reject(new Error("No Command Execution"));
             }
@@ -1836,7 +2238,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             return Promise.resolve();
         }
 
-        let messageObj = new TWITCHIRC.Message(this.TwitchIRC.getChannel(), { username: this.TwitchIRC.getUsername(), badges: { moderator: '1' } }, timer.alias || timer.output);
+        let messageObj = new TWITCHIRC.Message(this.TwitchIRC.getChannel(), this.TwitchIRC.getUsername(), timer.alias || timer.output, { badges: { moderator: '1' } });
 
         //Remanage Interval when offset was used
         if (timer_obj.time !== this.parseCooldownString(timer.interval)) {
@@ -1889,6 +2291,36 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
     }
     removeHardcodedCommands(name) {
         delete this.HardcodedCommands[name];
+    }
+    renameHardCoded(orig_name = "", new_name = "", user = "UNKNOWN") {
+        if (!orig_name || !this.validateName(new_name)) return "Invalid Command name"; 
+
+        if (this.HardcodedCommands[new_name]) return "Command already exists";
+        if (this.CustomCommands.find(elt => elt.name === new_name)) return "Command already exists";
+
+        let name_list = Object.getOwnPropertyNames(this.HardcodedCommands);
+        let i = 0;
+
+        for (let cmd of name_list) {
+            //Found Command
+            if (this.HardcodedCommands[cmd].getName() === orig_name) {
+                //replace name order
+                name_list.splice(i, 1, new_name);
+
+                //Create New Object List
+                let temp = {};
+                for (let name of name_list) {
+                    temp[name] = this.HardcodedCommands[name] || this.HardcodedCommands[cmd];
+                }
+                this.HardcodedCommands = temp;
+                
+                return true;
+            }
+
+            i++;
+        }
+
+        return "Command not found";
     }
 
     loadCommands() {
@@ -2024,6 +2456,8 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 return key + " is not a " + COMMAND_TEMPLATE[key] + "!";
             } else if (COMMAND_TEMPLATE[key] == "string" && customCommand[key].trim() == "" && key != "description") {
                 return key + " is empty!";
+            } else if (key === "regex" && (customCommand[key].charAt(0) === '/' || customCommand[key].charAt(customCommand[key].length - 1) === '/')) {
+                return "regex has leading slashes!";
             }
         }
 
@@ -2181,7 +2615,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
         if (tmr_idx < 0) return "Timer doesnt exists!";
 
         let s = this.stopTimer(name);
-        if (typeof (s) == "string") return s;
+        if (typeof (s) == "string" && s !== 'Timer not active.') return s;
 
         this.Timers.splice(tmr_idx, 1);
         this.Logger.info("Timer: " + name + " DELETED by " + user + "!");
@@ -2285,7 +2719,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
         return vars;
     }
-
+    
     getObjectFromPath(obj, path) {
         try {
             if (!(path instanceof Array)) path = path.split('.');
@@ -2406,8 +2840,10 @@ class HCCommand {
         this.description = options["description"] ? options["description"] : "";
         this.cooldown = options["cooldown"] ? options["cooldown"] : "1s";
         this.userlevels = options["userlevels"] ? options["userlevels"] : ["Regular"];
+        this.api_requierements = options["api_requierements"] ? options["api_requierements"] : [];
         this.detection_type = options["detection_type"] ? options["detection_type"] : "beginning_only_detection";
         this.enabled = options["enabled"] != false;
+        this.viewing_restriction = options["viewing_restriction"] === true;
 
         this.callback = callback;
     }
@@ -2442,6 +2878,9 @@ class HCCommand {
         return false;
     }
 
+    isViewingRestricted() {
+        return this.viewing_restriction === true;
+    }
     isEnabled() {
         return this.enabled;
     }
@@ -2454,11 +2893,14 @@ class HCCommand {
     
     toJSON() {
         return {
+            orig_name: this.getName(),
             description: this.description,
+            api_requierements: this.api_requierements,
             userlevels: this.userlevels,
             detection_type: this.detection_type,
             cooldown: this.cooldown,
-            enabled: this.enabled
+            enabled: this.enabled,
+            viewing_restriction: this.viewing_restriction
         };
     }
 }
@@ -2488,6 +2930,7 @@ class Variable {
     }
     getExtendedDetails() {
         return {
+            name: this.getName(),
             details: this.details,
             enabled: this.isEnabled()
         };
@@ -2506,6 +2949,7 @@ class Variable {
     }
 }
 
+module.exports.DETAILS = PACKAGE_DETAILS;
 module.exports.CommandHandler = CommandHandler;
 module.exports.HCCommand = HCCommand;
 module.exports.Variable = Variable;

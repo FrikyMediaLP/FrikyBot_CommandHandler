@@ -1,3 +1,10 @@
+:root {
+    --table-color: black;
+}
+.darkmode {
+    --table-color: white;
+}
+
 body{
     position: relative;
 }
@@ -52,7 +59,7 @@ body{
 -----------------------------*/
 #Hardcoded {
     background-color: #e8e8e8;
-    border: 1px solid #d1d1d1;
+    border: 1px solid dimgray;
 }
 .darkmode #Hardcoded {
     background-color: #616161;
@@ -85,42 +92,56 @@ body{
 .darkmode #Hardcoded #contentHC {
     color: white;
 }
-        #Hardcoded #contentHC .HardcodedName {
-            font-weight: bold;
-        }
+.darkmode #Hardcoded #contentHC b {
+    color: aliceblue;
+}
+#Hardcoded #contentHC .HardcodedName {
+    font-weight: bold;
+    border: none;
+    background: none;
+    padding: 10px;
+}
+#Hardcoded #contentHC .HardcodedName[missing] {
+    color: red;
+}
+.darkmode #Hardcoded #contentHC .HardcodedName {
+    color: white;
+}
 
-        #Hardcoded #contentHC > div {
-            padding: 10px;
-            border-top: 1px solid #d1d1d1;
-        }
-            #Hardcoded #contentHC > div:nth-child(1), #Hardcoded #contentHC > div:nth-child(2), #Hardcoded #contentHC > div:nth-child(3) {
+#Hardcoded #contentHC .HardcodedName:not([disabled]) {
+    border-bottom: 1px solid dimgray !important;
+}
+
+#Hardcoded #contentHC > * {
+    padding: 10px;
+    border-top: 1px solid dimgray !important;
+}
+            #Hardcoded #contentHC > *:nth-child(1), #Hardcoded #contentHC > *:nth-child(2), #Hardcoded #contentHC > *:nth-child(3) {
                 border-top: none;
             }
 
-            #Hardcoded #contentHC > div:nth-child(3n+3) {
-                border-right: 1px solid #d1d1d1;
-            }
 
-            #Hardcoded #contentHC > div:nth-child(6n+1), #Hardcoded #contentHC > div:nth-child(6n+2), #Hardcoded #contentHC > div:nth-child(6n+3) {
+            #Hardcoded #contentHC > *:nth-child(6n+1), #Hardcoded #contentHC > *:nth-child(6n+2), #Hardcoded #contentHC > *:nth-child(6n+3) {
                 background-color: white;
             }
 
-            #Hardcoded #contentHC > div:nth-child(6n+4), #Hardcoded #contentHC > div:nth-child(6n+5), #Hardcoded #contentHC > div:nth-child(6n+6) {
+            #Hardcoded #contentHC > *:nth-child(6n+4), #Hardcoded #contentHC > *:nth-child(6n+5), #Hardcoded #contentHC > *:nth-child(6n+6) {
                 background-color: #e8e8e8;
             }
 
-.darkmode #Hardcoded #contentHC > div:nth-child(6n+1), .darkmode #Hardcoded #contentHC > div:nth-child(6n+2), .darkmode #Hardcoded #contentHC > div:nth-child(6n+3) {
-    background-color: #383838;
+.darkmode #Hardcoded #contentHC > *:nth-child(6n+1), .darkmode #Hardcoded #contentHC > *:nth-child(6n+2), .darkmode #Hardcoded #contentHC > *:nth-child(6n+3) {
+    background-color: #292929;
 }
 
-.darkmode #Hardcoded #contentHC > div:nth-child(6n+4), .darkmode #Hardcoded #contentHC > div:nth-child(6n+5), .darkmode #Hardcoded #contentHC > div:nth-child(6n+6) {
+.darkmode #Hardcoded #contentHC > *:nth-child(6n+4), .darkmode #Hardcoded #contentHC > *:nth-child(6n+5), .darkmode #Hardcoded #contentHC > *:nth-child(6n+6){
     background-color: #262626;
 }
 
-        #Hardcoded #contentHC .HarcodedDetails span {
-            padding: 3px 6px;
-            background-color: rgba(253, 255, 117, 0.8);
-        }
+#Hardcoded #contentHC .HarcodedDetails span {
+    padding: 3px 6px;
+    background-color: rgba(66, 135, 245, 0.8);
+    color: white;
+}
 
         #Hardcoded #contentHC .HarcodedDetails ul {
             margin-top: 0;
@@ -147,6 +168,9 @@ body{
 button {
     cursor: pointer;
     border: none;
+}
+button[disabled] {
+    cursor: default;
 }
 
     customtable button {
@@ -444,6 +468,11 @@ button[red] {
     font-size: 15px;
 }
 
+#EDITOR_TIMER_AUTO_ENABLE_WRAPPER{
+    display: grid;
+    grid-template-columns: auto 100px;
+}
+
 /*-----------------------------
          HIERARCHY
 -----------------------------*/
@@ -506,16 +535,30 @@ button[red] {
 
 #BOTTOM_SETTINGS > div:last-child {
     margin-top: 10px;
-    width: 75%;
+    width: 95%;
     display: grid;
     grid-template-columns: 50% 50%;
+    justify-content: center;
 }
-    #BOTTOM_SETTINGS > div:last-child > center {
+
+#BOTTOM_SETTINGS.three > div:last-child {
+    grid-template-columns: 33% 33% 33%;
+}
+
+#BOTTOM_SETTINGS > div:last-child > center {
+    display: contents;
+}
+
+    #BOTTOM_SETTINGS > div:last-child > center div {
+        margin: 0 auto;
         display: grid;
         grid-column-gap: 10px;
         grid-template-columns: auto 52px;
         text-align: right;
     }
-    #BOTTOM_SETTINGS > div:last-child > center > span{
+    #BOTTOM_SETTINGS > div:last-child > center[hidden] {
+        display: none;
+    }
+    #BOTTOM_SETTINGS > div:last-child > center span{
         padding-top: 1px;
     }

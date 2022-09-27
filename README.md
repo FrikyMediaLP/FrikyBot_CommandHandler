@@ -35,8 +35,7 @@ Commands are typically only triggered if they are called in the beginning of a m
 Timers can post messages repeatedly. Using an alias, these messages can also be command outputs. Then a Command is posted, that also is posted by a timer, then the timer will be reset - removing bot spam of the same commands.
 
 ## Planned Features
-* **RegEx** - RegEx based command names and command outputs.
-* **Hardcoded Command Settings** - Renaming and changing of subsettings for Hardoded Commands.
+* **Hardcoded Command Settings** - changing of subsettings for Hardoded Commands.
 * **More Command Variables** - Math Operators and Javascript compiling variables.
 
 ## Updates

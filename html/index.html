@@ -204,8 +204,9 @@
                         </div>
                     </div>
                     <div>
-                        <center><span>Show Highlighted Variables:</span><switchbutton value="true" onclick="highlighted_vars(this)"></switchbutton></center>
-                        <center><span>Only show Output Text:</span><switchbutton value="false" onclick="output_only(this)"></switchbutton></center>
+                        <center><div><span>Show Highlighted Variables:</span><switchbutton value="true" onclick="highlighted_vars(this)"></switchbutton></div></center>
+                        <center><div><span>Only show Output Text:</span><switchbutton value="false" onclick="output_only(this)"></switchbutton></div></center>
+                        <center id="FILL_SWITCH" hidden><div><span>Fill Custom Variables:</span><switchbutton value="false" onclick="output_fill(this)"></switchbutton></div></center>
                     </div>
                 </center>
             </div>
@@ -217,7 +218,11 @@
                 <div class="Editor_Center">
                     <p>Command Trigger</p>
                     <input type="text" id="EDITOR_NAME" placeholder="!name" autocomplete="off" oninput="editor_name_change(this)" />
-                    <input id="EDITOR_NAME_CASE" type="checkbox" title="Case Sensitive (WiP)" style="transform: translate(0, -23px);" />
+                    <input id="EDITOR_NAME_CASE" type="checkbox" title="Case Sensitive (not compatable with RegEx, you can do that on your own ;P)" style="transform: translate(0, -23px);" />
+                    
+                    <p>RegEx</p>
+                    <input type="text" id="EDITOR_REGEX" title="The leading / is not requiered!" autocomplete="off" oninput="editor_regex_change(this)" />
+
                     <center id="Editor_Trigger_Text">Beginning Only Detection</center>
                     <input id="EDITOR_Trigger_MODE" type="range" min="0" value="0" step="1" max="3" oninput="editor_Command_trigger_mode(this);" />
                     <center id="Editor_Trigger_Text_Sub">Command will only trigger, when command is called at the start of a message</center>
@@ -239,15 +244,18 @@
 
                     <center style="margin-top: 30px;" class="editor_chatpter">Cooldown</center>
                     <input id="EDITOR_CD" type="range" min="0" value="1" step="1" max="39" oninput="editor_Command_cooldown_change(this);" />
-                    <input id="Editor_CD_Text" type="text" value="1m" oninput="editor_Command_interval_reverse(this.value)"/>
+                    <input id="Editor_CD_Text" type="text" value="1m" oninput="editor_Command_interval_reverse(this.value)" />
 
                     <center class="editor_chatpter">Alias</center>
                     <input type="text" id="EDITOR_ALIAS" autocomplete="off" />
 
                     <div id="EDITOR_COUNT_WRAPPER">
                         <center style="margin-top: 30px;" class="editor_chatpter">Count Value <button onclick="editor_Command_counterremove()">clear</button></center>
-                        <input id="EDITOR_COUNT" type="range" min="0" value="1" step="1" onchange="this.title = this.value"/>
+                        <input id="EDITOR_COUNT" type="range" min="0" value="1" step="1" onchange="this.title = this.value" />
                     </div>
+
+                    <center style="margin-top: 20px;" class="editor_chatpter">Restrict Visibility</center>
+                    <center><switchbutton value="false" id="EDITOR_VIEWING_RESTRICTION"></switchbutton></center>
 
                     <center style="margin-top: 20px;" class="editor_chatpter">Enabled</center>
                     <center><switchbutton value="true" id="EDITOR_ENABLE"></switchbutton></center>
@@ -344,6 +352,12 @@
                     <p>Alias</p>
                     <input type="text" id="EDITOR_TIMER_ALIAS" autocomplete="off" oninput="editor_Timer_alias(this)" />
                     <center id="EDITOR_TIMER_ALIAS_INFO"></center>
+
+                    <p id="EDITOR_TIMER_AUTO_ENABLE_WRAPPER">Auto-Enable</p>
+                    <center><input id="EDITOR_TIMER_AUTO_ENABLE_IN" placeholder="enter game here" hidden/></center>
+
+                    <center style="margin-top: 20px;" class="editor_chatpter">Restrict Visibility</center>
+                    <center><switchbutton value="false" id="EDITOR_TIMER_VIEWING_RESTRICTION"></switchbutton></center>
 
                     <center style="margin-top: 20px;" class="editor_chatpter">Enabled</center>
                     <center><switchbutton value="true" id="EDITOR_TIMER_ENABLE"></switchbutton></center>

@@ -3,9 +3,11 @@
 };
 let UL_Options = [];
 let Basic_UL_Options = [];
+let SCOPES = [];
 
 let Commands = [];
 let HCCommands = [];
+let CommandVariables = [];
 
 let Commands_perPage = 10;
 let Commands_currentPage = 0;
@@ -14,8 +16,11 @@ let Timers = [];
 let Timers_perPage = 10;
 let Timers_currentPage = 0;
 
+let CustomVariables = {};
+
 let hightlight_vars = true;
 let show_output_only = false;
+let fill_output = false;
 
 let AUTH_MODE = false;
 let EDIT_MODE = 0;
@@ -30,7 +35,9 @@ const COMMAND_TEMPLATE = {
     enabled: "boolean",
     name: "string",
     counter: "number",
-    alias: "string"
+    alias: "string",
+    regex: "string",
+    viewing_restriction: "boolean"
 };
 const COMMAND_TEMPLATE_REQUIRED = {
     output: "string",
@@ -42,6 +49,7 @@ const TRIGGER_MODES = [
     { name: 'multi_detection', title: 'Multi Detection', desc: 'Multiple Commands can be triggered in the same message. This stops when a command is triggered that doesnt have Multi Detection. Note: This command triggers only when at the beginning of the message.' },
     { name: 'multi_inline_detection', title: 'Multi-Inline Detection', desc: 'Same as Multi Detection, but can be triggered at any point in the message' }
 ];
+const TIMER_AUTO_ENABLE = ['always', 'online', 'offline', 'game'];
 
 const TIMER_TEMPLATE = {
     interval: "string",
@@ -50,7 +58,10 @@ const TIMER_TEMPLATE = {
     enabled: "boolean",
     name: "string",
     lines: "number",
-    alias: "string"
+    alias: "string",
+    auto_enable: "string",
+    game: "string",
+    viewing_restriction: "boolean"
 };
 const TIMER_TEMPLATE_REQUIRED = {
     interval: "string",
@@ -109,34 +120,61 @@ async function init() {
         document.getElementById('ADD_CUSTOM').removeAttribute('hidden');
         document.getElementById('ADD_TIMER').removeAttribute('hidden');
         document.getElementById('EDITOR_UL').innerHTML = ICON_SELECTION_create(Basic_UL_Options, Basic_UL_Options.find(elt => elt.value == 'Regular'));
+        document.getElementById('FILL_SWITCH').removeAttribute('hidden');
+        document.getElementById('BOTTOM_SETTINGS').classList.add('three');
     }
 
-    //Custom Commands
-    try {
-        await Fetch_Commands();
-    } catch (err) {
-        console.log(err);
-        OUTPUT_showError(err);
-    }
+    document.getElementById('EDITOR_TIMER_AUTO_ENABLE_WRAPPER').innerHTML = '<span>Auto-Enable</span>' + MISC_SELECT_create(['always', 'online', 'offline', 'game'], 0, "EDITOR_TIMER_AUTO_ENABLE", 'editor_Timer_auto_enable(this)');
 
-    //Cooldowned Commands
-    try {
-        await updateCooldownTable();
-    } catch (err) {
-        console.log(err);
-        OUTPUT_showError(err);
-    }
+    //Fetch Page
+    fetch('/api/commands/page', getAuthHeader())
+        .then(STANDARD_FETCH_RESPONSE_CHECKER)
+        .then(json => {
+            SCOPES = json.scopes;
+            CustomVariables = json.custom_variables || {};
 
-    //Timers
-    try {
-        if (AUTH_MODE) await fetchTimers();
-        updateTimerTable();
-    } catch (err) {
-        console.log(err);
-        OUTPUT_showError(err);
-    }
-    
-    hashCheck();
+            //Commands
+            if (json.Hardcoded) {
+                let i = 0;
+                let h = "";
+
+                for (let cmd in json.Hardcoded) {
+                    h += createHCContent(cmd, json.Hardcoded[cmd], i++);
+                }
+
+                if (h == "") h = '<div><div style="transform: translate(100 %, 0)";>NONE</div></div><div></div>';
+
+                document.getElementById("contentHC").innerHTML = h;
+            }
+            Commands = json.Custom || [];
+            CommandVariables = json.variables;
+            Commands.sort(sortByNameDEC);
+            updateCommandsTable();
+
+            //Cooldown
+            updateCooldownTable(json);
+
+            //Timers
+            if (AUTH_MODE) {
+                Timers = json.Timers;
+
+                for (let act of json.ActiveTimers) {
+                    let tmr = Timers.find(elt => elt.name === act.name);
+                    tmr.active = act.started_at;
+                    tmr.remaining_lines = tmr.lines - act.lines;
+                }
+
+                Timers.sort(sortByNameDEC);
+                updateTimerTable();
+            }
+
+            hashCheck();
+            SWITCHBUTTON_AUTOFILL();
+        })
+        .catch(err => {
+            console.log(err);
+            OUTPUT_showError(err.message);
+        });
 }
 async function Fetch_Commands() {
     return fetch("/api/Commands/Commands", getAuthHeader())
@@ -160,7 +198,7 @@ async function Fetch_Commands() {
             updateCommandsTable();
             SWITCHBUTTON_AUTOFILL();
         });
-}
+} 
 function hashCheck() {
     let hash = GetURLHashArray();
 
@@ -209,8 +247,18 @@ function toggleShow() {
     }
 }
 function createHCContent(name, obj, id) {
-    let s = '<div class="HardcodedName">' + name + '</div>';
-    s += '<div class="HarcodedDetails">' + obj.description + '</div>';
+    let missing = false;
+
+    for (let req of obj.api_requierements) {
+        if (!SCOPES.find(elt => elt === req.scope)) missing = true;
+    }
+
+    let s = '<div>';
+    s += '<input class="HardcodedName" value="' + name + '" placeholder="' + obj.orig_name + '" oninput="showRenameHCcommand(this)" ' + (AUTH_MODE ? '' : 'disabled') + '/>';
+    s += '<center style="display: none; margin-top: 10px;">' + (AUTH_MODE ? '<button onclick="renameHCcommand(this)">RENAME</button>' : '') + '</center>';
+    s += '</div>';
+    
+    s += '<div class="HarcodedDetails">' + obj.description + (AUTH_MODE && missing ? '</br><b style="color: red;">Missing API Scope: ' + obj.api_requierements.reduce((sum, cur) => sum += cur.scope + ',' ,'') + '</b>' : '') + '</div>';
     s += '<div>' + (AUTH_MODE ? SWITCHBUTTON_CREATE(obj.enabled, false, "toggleHCEnable('" + name + "', this.value)") : '') + '</div>';
     return s;
 }
@@ -228,6 +276,33 @@ function toggleHCEnable(name, state) {
         .catch(err => {
             console.log(err);
             OUTPUT_showError(err.message);
+        });
+}
+function showRenameHCcommand(elt) {
+    if (elt.placeholder === elt.value || !elt.value || !elt.placeholder) {
+        elt.parentElement.childNodes[1].style.display = 'none';
+    } else {
+        elt.parentElement.childNodes[1].style.display = 'block';
+    }
+}
+function renameHCcommand(elt) {
+    elt = elt.parentElement.parentElement.childNodes[0];
+
+    let opts = getAuthHeader();
+    opts['method'] = 'MOVE';
+    opts['headers']['Content-Type'] = 'application/json';
+    opts['body'] = JSON.stringify({ orig_name: elt.placeholder, new_name: elt.value });
+
+    fetch('/api/commands/hccommands', opts)
+        .then(STANDARD_FETCH_RESPONSE_CHECKER)
+        .then(json => {
+            OUTPUT_hideError();
+            elt.placeholder = elt.value;
+            showRenameHCcommand(elt);
+        })
+        .catch(err => {
+            OUTPUT_showError(err.message);
+            console.log(err);
         });
 }
 
@@ -380,12 +455,18 @@ async function send_edit_Custom() {
 async function remove_Custom(name) {
     //Await Confirmation
     let answer = 'NO';
-    
+
+    document.getElementById('CUSTOM_COMMAND_EDITOR').style.display = 'none';
+    document.getElementById('TIMER_EDITOR').style.display = 'none';
+
     try {
         answer = await MISC_USERCONFIRM("YOU SURE YOU WANT THIS?", "Do you really want to delete this Command?");
     } catch (err) {
 
     }
+
+    document.getElementById('CUSTOM_COMMAND_EDITOR').style.display = null;
+    document.getElementById('TIMER_EDITOR').style.display = null;
 
     if (answer !== 'YES') return Promise.resolve();
 
@@ -423,9 +504,17 @@ async function remove_Custom(name) {
 function editor_name_change(elt) {
     elt.value = elt.value.trim();
 }
+function editor_regex_change(elt) {
+    elt.value = elt.value.trim();
+
+    if (elt.value.charAt(0) === '/') elt.value = elt.value.substring(1);
+    if (elt.value.charAt(elt.value.length - 1) === '/') elt.value = elt.value.substring(0, elt.value.length - 1);
+}
 
 function editor_Command_set(data = {}) {
+    let enabled = document.getElementById('EDITOR_ENABLE');
     let name = document.getElementById('EDITOR_NAME');
+    let regex = document.getElementById('EDITOR_REGEX');
     let caseSens = document.getElementById('EDITOR_NAME_CASE');
     let detection_type = document.getElementById('EDITOR_Trigger_MODE');
     let output = document.getElementById('EDITOR_OUTPUT');
@@ -434,12 +523,14 @@ function editor_Command_set(data = {}) {
     let strict_level = document.getElementById('EDITOR_UL_MODE');
     let cooldown = document.getElementById('Editor_CD_Text');
     let alias = document.getElementById('EDITOR_ALIAS');
+    let viewing_restriction = document.getElementById('EDITOR_VIEWING_RESTRICTION');
     document.getElementById('EDITOR_COUNT_WRAPPER').style.display = 'none';
 
     if (!data.userlevel) data.userlevel = "Regular";
     editor_Command_badgemode_reverse(data.userlevel);
 
     name.value = data.name || '';
+    regex.value = data.regex || '';
     name.placeholder = name.value;
     caseSens.checked = data.case === true;
     editor_Command_trigger_reverse(data.detection_type || 0);
@@ -465,6 +556,9 @@ function editor_Command_set(data = {}) {
     editor_Command_ul_mode(strict_level || 0);
     
     editor_Command_cooldown_reverse(data.cooldown || '1m');
+
+    SWITCHBUTTON_TOGGLE(enabled, data['enabled'] === true);
+    SWITCHBUTTON_TOGGLE(viewing_restriction, data['viewing_restriction'] === true);
 }
 
 function editor_Command_show(hide = false) {
@@ -563,6 +657,7 @@ function editor_Command_counterremove() {
 }
 function editor_Command_gerneratoreJSON() {
     let name = document.getElementById('EDITOR_NAME').value;
+    let regex = document.getElementById('EDITOR_REGEX').value;
     let case_sens = document.getElementById('EDITOR_NAME_CASE').checked === true;
     let detection_type = TRIGGER_MODES[parseInt(document.getElementById('EDITOR_Trigger_MODE').value)].name;
     let output = document.getElementById('EDITOR_OUTPUT').value;
@@ -573,8 +668,9 @@ function editor_Command_gerneratoreJSON() {
     let enabled = document.getElementById('EDITOR_ENABLE').value === true;
     let alias = document.getElementById('EDITOR_ALIAS').value;
     let counter = document.getElementById('EDITOR_COUNT').value;
+    let viewing_restriction = document.getElementById('EDITOR_VIEWING_RESTRICTION').value === true;
 
-    let data = { name, detection_type, output, description, userlevel, strictlevel, cooldown, enabled, case: case_sens, alias };
+    let data = { name, detection_type, output, description, userlevel, strictlevel, cooldown, enabled, case: case_sens, alias, viewing_restriction, regex };
     if (document.getElementById('EDITOR_COUNT_WRAPPER').style.display !== 'none' && document.getElementById('EDITOR_COUNT_WRAPPER').style.display !== "") data.counter = counter;
 
     for (let key in data) {
@@ -658,6 +754,10 @@ function highlighted_vars(elt) {
 }
 function output_only(elt) {
     show_output_only = elt.value;
+    updateCommandsTable();
+}
+function output_fill(elt) {
+    fill_output = elt.value;
     updateCommandsTable();
 }
 
@@ -1001,7 +1101,7 @@ function updateTimerTable() {
             },
             active: (x, obj, i, content) => {
                 if (!x) return '-';
-                return MISC_createTable_timestamps(x, 'relative') + ' and ' + Math.nax(0, obj.remaining_lines) + ' Lines';
+                return MISC_createTable_timestamps(x, 'relative') + ' and ' + Math.max(0, obj.remaining_lines) + ' Lines';
             }
         },
         column_addition: {
@@ -1131,8 +1231,10 @@ function editor_Timer_setData(data = {}) {
     let description = document.getElementById('EDITOR_TIMER_DESC');
     let interval = document.getElementById('Editor_TIMER_INTERVAL_Text');
     let enabled = document.getElementById('EDITOR_TIMER_ENABLE');
+    let viewing_restriction = document.getElementById('EDITOR_TIMER_VIEWING_RESTRICTION');
     let alias = document.getElementById('EDITOR_TIMER_ALIAS');
     let alias_info = document.getElementById('EDITOR_TIMER_ALIAS_INFO');
+    let game = document.getElementById('EDITOR_TIMER_AUTO_ENABLE_IN');
     
     name.value = data.name || '';
     name.placeholder = name.value;
@@ -1144,17 +1246,31 @@ function editor_Timer_setData(data = {}) {
     interval.value = data.interval;
     editor_Timer_lines_change(data.lines);
     SWITCHBUTTON_TOGGLE(enabled, data.enabled === true);
+    SWITCHBUTTON_TOGGLE(viewing_restriction, data.viewing_restriction === true);
     alias.value = data.alias || '';
 
     let alias_text = alias.value.split(' ')[0];
 
-    if (!Commands.find(elt => elt.name === alias_text) && !HCCommands.find(elt => elt.name === alias_text)) {
+    if (alias_text && !Commands.find(elt => elt.name === alias_text) && !HCCommands.find(elt => elt.name === alias_text)) {
         alias.classList.add("notfound");
         alias_info.innerHTML = 'Alias Command not found!';
     } else {
         alias.classList.remove("notfound");
         alias_info.innerHTML = '';
     }
+
+    let auto_enable = 0;
+    TIMER_AUTO_ENABLE.find((elt, idx) => {
+        if (elt === data.auto_enable) {
+            auto_enable = idx;
+            return true;
+        }
+        return false;
+    });
+
+    document.getElementById('EDITOR_TIMER_AUTO_ENABLE_WRAPPER').innerHTML = '<span>Auto-Enable</span>' + MISC_SELECT_create(TIMER_AUTO_ENABLE, auto_enable, "EDITOR_TIMER_AUTO_ENABLE", 'editor_Timer_auto_enable(this)');
+    game.value = data.game || '';
+    editor_Timer_auto_enable();
 }
 
 function editor_Timer_output_change(elt, e) {
@@ -1204,6 +1320,13 @@ function editor_Timer_alias(elt) {
         alias_info.innerHTML = '';
     }
 }
+function editor_Timer_auto_enable(elt) {
+    if (MISC_SELECT_GetValue(document.getElementById('EDITOR_TIMER_AUTO_ENABLE')) === 'game') {
+        document.getElementById('EDITOR_TIMER_AUTO_ENABLE_IN').removeAttribute('hidden');
+    } else {
+        document.getElementById('EDITOR_TIMER_AUTO_ENABLE_IN').setAttribute('hidden', 'true');
+    }
+}
 
 function editor_Timer_gerneratoreJSON() {
     let name = document.getElementById('EDITOR_TIMER_NAME').value;
@@ -1213,8 +1336,16 @@ function editor_Timer_gerneratoreJSON() {
     let enabled = document.getElementById('EDITOR_TIMER_ENABLE').value === true;
     let alias = document.getElementById('EDITOR_TIMER_ALIAS').value;
     let lines = parseInt(document.getElementById('EDITOR_TIMER_LINES').value);
+    let viewing_restriction = document.getElementById('EDITOR_TIMER_VIEWING_RESTRICTION').value === true;
+    let auto_enable = MISC_SELECT_GetValue(document.getElementById('EDITOR_TIMER_AUTO_ENABLE'));
+    let game = document.getElementById('EDITOR_TIMER_AUTO_ENABLE_IN').value;
 
-    let data = { name, output, description, enabled, interval, alias, lines };
+    if (auto_enable === 'game' && game === "") {
+        OUTPUT_showError('Please enter a game :)', document.getElementById('EDITOR_OUTPUT_2'));
+        return null;
+    }
+
+    let data = { name, output, description, enabled, interval, alias, lines, viewing_restriction, auto_enable, game };
     
     for (let key in data) {
         if (data[key] === "") delete data[key];
@@ -1240,6 +1371,8 @@ function editor_Timer_save() {
 
 async function addTimer() {
     let data = editor_Timer_gerneratoreJSON();
+
+    if (!data) return;
 
     let s = validate(data, TIMER_TEMPLATE, TIMER_TEMPLATE_REQUIRED);
     if (typeof (s) == "string") {
@@ -1281,6 +1414,8 @@ function edit_timer(name) {
 }
 async function send_edit_Timer() {
     let data = editor_Timer_gerneratoreJSON();
+
+    if (!data) return;
 
     //Validate Data
     let s = validate(data, TIMER_TEMPLATE, TIMER_TEMPLATE_REQUIRED);
@@ -1369,12 +1504,18 @@ async function remove_timer(name) {
     //Await Confirmation
     let answer = 'NO';
 
+    document.getElementById('CUSTOM_COMMAND_EDITOR').style.display = 'none';
+    document.getElementById('TIMER_EDITOR').style.display = 'none';
+
     try {
-        answer = await MISC_USERCONFIRM("YOU SURE YOU WANT THIS?", "Do you really want to delete this Command?");
+        answer = await MISC_USERCONFIRM("YOU SURE YOU WANT THIS?", "Do you really want to delete this Timer?");
     } catch (err) {
 
     }
 
+    document.getElementById('CUSTOM_COMMAND_EDITOR').style.display = null;
+    document.getElementById('TIMER_EDITOR').style.display = null;
+    
     if (answer !== 'YES') return Promise.resolve();
 
     let opts = getAuthHeader();
@@ -1508,7 +1649,14 @@ function extractVariables(commandOutString, addStart = 0) {
             }
         }
 
-        variables.push({ var: commandOutString.substring(start - 2, tempStart), start: addStart + start, end: addStart + tempStart })
+        let vari = commandOutString.substring(start - 2, tempStart);
+
+        variables.push({
+            var: vari,
+            start: addStart + start,
+            end: addStart + tempStart,
+            name: vari.substring(2, vari.indexOf(')') < vari.indexOf(' ') || vari.indexOf(' ') === -1 ? vari.indexOf(')') : vari.indexOf(' '))
+        });
         start = tempStart;
     }
 
@@ -1525,21 +1673,52 @@ function extractVariables(commandOutString, addStart = 0) {
 function createVariableDivs(stackedVariables, original, start = 0, level = 0, parentEnd) {
     let color = ["252, 186, 3", "252, 3, 156"];
     let returned = "";
-
+    
     for (let i = 0; i < stackedVariables.length - 1; i++) {
+        let is_missing = false;
+
+        let vars = CommandVariables.find(elt => elt.name.toLowerCase() === stackedVariables[i].name);
+        if (vars) {
+            for (let vari of vars.details.api_requierements || []) {
+                if (stackedVariables[i].name.toLowerCase() === 'twitch') {
+                    for (let key in vari) {
+                        if (stackedVariables[i].var.split(" ")[2].split(')')[0] === key) {
+                            if (!SCOPES.find(elt => elt === vari[key])) is_missing = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         //ADD BEFORE
         if (i == 0) {
             returned += original.substring(start, stackedVariables[i].start - 2);
         }
 
+        let title = 'VARIABLE';
+        if (is_missing) title += ' - Missing API Scope Access!';
+        
         //ADD VARIABLE
         if (stackedVariables[stackedVariables.length - 1][i].length == 0) {
+            let content = stackedVariables[i].var;
+
+            if (fill_output) {
+                let cur_obj = CustomVariables;
+
+                for (let step of stackedVariables[i].name.split('.')) {
+                    cur_obj = cur_obj[step];
+                    if (cur_obj === undefined) break;
+                }
+
+                if (cur_obj !== undefined && typeof cur_obj !== 'object') content = cur_obj;
+            }
+
             //Directly Add Variable
-            returned += '<span title="VARIABLE" style="background-color: rgba(' + color[level % color.length] + ', 0.1); border: 1px solid rgb(' + color[level % color.length] + ');">' + stackedVariables[i].var + '</span>';
+            returned += '<span title="' + title + '" style="background-color: rgba(' + color[level % color.length] + ', 0.1); border: 1px solid rgb(' + color[level % color.length] + '); ' + (is_missing ? "color: red;" : 'color: var(--table-color);') + '">' + content + '</span>';
         } else {
             //Wrapping 
-            returned += '<span title="VARIABLE" style="background-color: rgba(' + color[level % color.length] + ', 0.1); border: 1px solid rgb(' + color[level % color.length] + ');">' + createVariableDivs(stackedVariables[stackedVariables.length - 1][i], original, stackedVariables[i].start - 2, level + 1, stackedVariables[i].end) + '</span>';
+            returned += '<span title="' + title + '" style="background-color: rgba(' + color[level % color.length] + ', 0.1); border: 1px solid rgb(' + color[level % color.length] + '); ' + (is_missing ? "color: red;" : 'color: var(--table-color);') + '">' + createVariableDivs(stackedVariables[stackedVariables.length - 1][i], original, stackedVariables[i].start - 2, level + 1, stackedVariables[i].end) + '</span>';
         }
         start = stackedVariables[i].end;
 
