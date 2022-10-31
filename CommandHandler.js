@@ -54,7 +54,7 @@ const PACKAGE_DETAILS = {
         eventsubs: ['channel.update', 'stream.online', 'stream.offline', 'channel.poll.begin', 'channel.poll.progress', 'channel.poll.end', 'channel.prediction.update', 'channel.prediction.progress', 'channel.prediction.end'],
         endpoints: ['GetStreams', 'GetChannelInformation', 'ModifyChannelInformation', 'SearchCategories', 'CreateClip', 'GetClips', 'CreatePoll', 'EndPoll', 'CreatePrediction', 'EndPrediction', 'GetUsers', 'GetStreamTags', 'GetBroadcasterSubscriptions', 'GetUsersFollows', 'GetChannelEmotes']
     },
-    version: '0.4.0.0',
+    version: '0.4.1.0',
     server: '0.4.0.0',
     modules: {
         twitchapi: '0.4.0.0',
@@ -90,6 +90,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
             { name: 'pred_duration', type: 'number', default: 60 },
             { name: 'pred_outcome_blue', type: 'string', default: 'YES' },
             { name: 'pred_outcome_pink', type: 'string', default: 'NO' },
+            { name: 'timezone', type: 'string', default: '' },
             { name: 'website_userlevel', type: 'string', default: 'viewer', selection: ['viewer', 'moderator', 'staff', 'admin'], title: 'Website Userlevel Restriction', description: 'Restrict Access to the CommandHandler Website for Users below the given Userlevel.' }
         ]);
         this.Config.Load();
@@ -277,10 +278,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 //Fetch Poll
                 try {
-                    let polls = this.TwitchAPI.GetPolls({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+                    let polls = await this.TwitchAPI.GetPolls({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
                     //Is running?
-                    if (polls.length > 0 && polls[0].status === 'ACTIVE') {
+                    if (polls.data.length > 0 && polls.data[0].status === 'ACTIVE') {
                         this.TwitchIRC.say("Another Poll is still running!").catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     }
@@ -350,8 +351,9 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 //Create Poll
                 try {
                     let poll = await this.TwitchAPI.CreatePoll({}, poll_request);
+                    if (poll.data.length > 0) return Promise.resolve();
                     this.TwitchIRC.say("Poll couldnt be created!").catch(err => this.Logger.error(err.message));
-                    return Promise.reject(new Error('Poll couldnt be created!'));
+                    return Promise.reject(new Error("Poll couldnt be created!"));
                 } catch (err) {
                     this.TwitchIRC.say("Poll couldnt be created!").catch(err => this.Logger.error(err.message));
                     return Promise.reject(err);
@@ -368,10 +370,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 //Fetch Poll
                 try {
-                    polls = this.TwitchAPI.GetPolls({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+                    polls = await this.TwitchAPI.GetPolls({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
                     //Is running?
-                    if (polls.length === 0 || polls[0].status !== 'ACTIVE') {
+                    if (polls.data.length === 0 || polls.data[0].status !== 'ACTIVE') {
                         this.TwitchIRC.say("No active Poll found!").catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     } 
@@ -382,7 +384,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 //Create Poll data
                 let poll_request = {
                     broadcaster_id: userMessageObj.getRoomID(),
-                    id: polls[0].id,
+                    id: polls.data[0].id,
                     status: 'TERMINATED'
                 };
 
@@ -405,10 +407,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 //Fetch Prediction
                 try {
-                    let predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+                    let predictions = await this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
                     //Is running?
-                    if (predictions.length > 0 && predictions[0].status === 'ACTIVE') {
+                    if (predictions.data.length > 0 && predictions.data[0].status === 'ACTIVE') {
                         this.TwitchIRC.say("Another Prediction is still running!").catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     }
@@ -484,10 +486,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 //Fetch Prediction
                 try {
-                    predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+                    predictions = await this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
                     //Is running?
-                    if (predictions.length === 0 || predictions[0].status !== 'ACTIVE') {
+                    if (predictions.data.length === 0 || predictions.data[0].status !== 'ACTIVE') {
                         this.TwitchIRC.say("No Prediction found!").catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     }
@@ -498,7 +500,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 //Create Prediction data
                 let pred_request = {
                     broadcaster_id: userMessageObj.getRoomID(),
-                    id: predictions[0].id,
+                    id: predictions.data[0].id,
                     status: 'LOCKED'
                 };
 
@@ -522,10 +524,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 //Fetch Prediction
                 try {
-                    predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+                    predictions = await this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
                     //Is running?
-                    if (predictions.length === 0 || predictions[0].status !== 'ACTIVE') {
+                    if (predictions.data.length === 0 || predictions.data[0].status !== 'ACTIVE') {
                         this.TwitchIRC.say("No Prediction found!").catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     }
@@ -536,7 +538,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 //Create Prediction data
                 let pred_request = {
                     broadcaster_id: userMessageObj.getRoomID(),
-                    id: predictions[0].id,
+                    id: predictions.data[0].id,
                     status: 'CANCELED'
                 };
 
@@ -566,10 +568,10 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
 
                 //Fetch Prediction
                 try {
-                    predictions = this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
+                    predictions = await this.TwitchAPI.GetPredictions({ broadcaster_id: userMessageObj.getRoomID(), first: 1 });
 
                     //Is running?
-                    if (predictions.length === 0 || predictions[0].status !== 'ACTIVE') {
+                    if (predictions.data.length === 0 || predictions.data[0].status !== 'ACTIVE') {
                         this.TwitchIRC.say("No Prediction found!").catch(err => this.Logger.error(err.message));
                         return Promise.resolve();
                     }
@@ -577,7 +579,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     return Promise.reject(err);
                 }
 
-                if (!predictions[0].outcomes.length < parseInt(parameters[1])) {
+                if (!predictions.data[0].outcomes.length < parseInt(parameters[1])) {
                     this.TwitchIRC.say("Not a valid Outcome!").catch(err => this.Logger.error(err.message));
                     return Promise.reject();
                 }
@@ -585,9 +587,9 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 //Create Prediction
                 let pred_request = {
                     broadcaster_id: userMessageObj.getRoomID(),
-                    id: predictions[0].id,
+                    id: predictions.data[0].id,
                     status: 'RESOLVED',
-                    winning_outcome_id: predictions[0].outcomes[parseInt(parameters[1])].id
+                    winning_outcome_id: predictions.data[0].outcomes[parseInt(parameters[1])].id
                 };
 
                 //Resolve Prediction
@@ -1012,6 +1014,8 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 "description": "You can use the countdown variable to create commands that display the time left until a specified date. For example, you may want to countdown until a special event on stream, or until when the stream will start every day.",
                 "Nightbot": { "version": "22nd Oct 2020" }
             }, async (variableString, userMessageObj, commandOrig, parameters) => {
+                let cfg = this.Config.GetConfig();
+
                 let time = variableString.substring(12, variableString.length - 1);
                 let date = new Date(time);
                 let rel = 0;
@@ -1020,7 +1024,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 try {
                     date.getTime(); //CHECKS VALID DATE
                 } catch (err) {
-                    date = new Date(new Date().toLocaleDateString() + " " + time);
+                    date = new Date(new Date().toLocaleDateString(cfg['timezone'] === "" ? undefined : cfg['timezone']) + " " + time);
                     autocomplete = true;
                 }
 
@@ -1029,7 +1033,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     if (autocomplete && rel > 0) {
                         let temp_date = new Date();
                         temp_date.setDate(temp_date.getDate() + 1);
-                        date = new Date(temp_date.toLocaleDateString() + " " + time);
+                        date = new Date(temp_date.toLocaleDateString(cfg['timezone'] === "" ? undefined : cfg['timezone']) + " " + time);
                         rel = Date.now() - date.getTime();
                     }
                 } catch (err) {
@@ -1037,12 +1041,14 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 }
                 if (rel > 0) return Promise.reject(new Error('Time is in the past!'));
                 
-                return Promise.resolve(this.getRelativeTimeString(rel));
+                return Promise.resolve(this.getRelativeTimeString(Date.now() + rel));
             }),
             "countup": new Variable("Countup", {
                 "description": "You can use the countup variable to create commands that display the time since a specified date. For example, maybe you want to countup from a special event that happened on your stream.",
                 "Nightbot": { "version": "22nd Oct 2020" }
             }, async (variableString, userMessageObj, commandOrig, parameters) => {
+                let cfg = this.Config.GetConfig();
+
                 let time = variableString.substring(10, variableString.length - 1);
                 let date = new Date(time);
                 let rel = 0;
@@ -1051,7 +1057,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 try {
                     date.getTime(); //CHECKS VALID DATE
                 } catch (err) {
-                    date = new Date(new Date().toLocaleDateString() + " " + time);
+                    date = new Date(new Date().toLocaleDateString(cfg['timezone'] === "" ? undefined : cfg['timezone']) + " " + time);
                     autocomplete = true;
                 }
 
@@ -1060,7 +1066,7 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                     if (autocomplete && rel < 0) {
                         let temp_date = new Date();
                         temp_date.setDate(temp_date.getDate() - 1);
-                        date = new Date(temp_date.toLocaleDateString() + " " + time);
+                        date = new Date(temp_date.toLocaleDateString(cfg['timezone'] === "" ? undefined : cfg['timezone']) + " " + time);
                         rel = Date.now() - date.getTime();
                     }
                 } catch (err) {
@@ -1123,16 +1129,18 @@ class CommandHandler extends require('./../../Util/PackageBase.js').PackageBase 
                 "description": "The time variable prints the current time in a selected timezone. (WARNING: Only Javascript native Timezones/Formats are currently supported <a href='https://www.iana.org/time-zones'>visit</a>)",
                 "Nightbot": { "version": "22nd Oct 2020" }
             }, async (variableString, userMessageObj, commandOrig, parameters) => {
+                let cfg = this.Config.GetConfig();
+
                 let variable_params = variableString.substring(2, variableString.length - 1).split(" ");
                 let options = {};
-                let format = "de-DE";
+
                 if (variable_params.length > 1) options.timeZone = variable_params[1];
                 if (variable_params.length > 2) options.timeZone = variable_params[2];
 
                 let today = new Date();
 
                 try {
-                    return Promise.resolve(today.toLocaleDateString(format, options) + " " + today.toLocaleTimeString(format, options));
+                    return Promise.resolve(today.toLocaleDateString(cfg['timezone'] === "" ? "de-DE" : cfg['timezone'], options) + " " + today.toLocaleTimeString(cfg['timezone'] === "" ? "de-DE" : cfg['timezone'], options));
                 } catch (err) {
                     return Promise.reject(err);
                 }

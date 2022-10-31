@@ -667,7 +667,7 @@ function editor_Command_gerneratoreJSON() {
     let cooldown = document.getElementById('Editor_CD_Text').value;
     let enabled = document.getElementById('EDITOR_ENABLE').value === true;
     let alias = document.getElementById('EDITOR_ALIAS').value;
-    let counter = document.getElementById('EDITOR_COUNT').value;
+    let counter = parseInt(document.getElementById('EDITOR_COUNT').value);
     let viewing_restriction = document.getElementById('EDITOR_VIEWING_RESTRICTION').value === true;
 
     let data = { name, detection_type, output, description, userlevel, strictlevel, cooldown, enabled, case: case_sens, alias, viewing_restriction, regex };
